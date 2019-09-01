@@ -1,0 +1,162 @@
+Failed to parse feed http://feeds.feedburner.com/37signals/beMH
+
+Failed to parse feed http://feeds.feedburner.com/blogspot/bRuz
+
+Failed to parse feed http://battellemedia.com/index.xml
+
+Failed to parse feed http://feeds.searchenginewatch.com/sewblog
+
+Failed to parse feed http://blog.topix.net/index.rdf
+
+Failed to parse feed http://blogs.abcnews.com/theblotter/index.rdf
+
+Failed to parse feed http://feeds.feedburner.com/ConsumingExperienceFull
+
+Failed to parse feed http://flagrantdisregard.com/index.php/feed/
+
+Failed to parse feed http://featured.gigaom.com/feed/
+
+Failed to parse feed http://gofugyourself.typepad.com/go_fug_yourself/index.rdf
+
+Failed to parse feed http://googleblog.blogspot.com/rss.xml
+
+Failed to parse feed http://feeds.feedburner.com/GoogleOperatingSystem
+
+Failed to parse feed http://headrush.typepad.com/creating_passionate_users/index.rdf
+
+Failed to parse feed http://feeds.feedburner.com/instapundit/main
+
+Failed to parse feed http://jeremy.zawodny.com/blog/rss2.xml
+
+Failed to parse feed http://joi.ito.com/index.rdf
+
+Failed to parse feed http://feeds.feedburner.com/Mashable
+
+Failed to parse feed http://michellemalkin.com/index.rdf
+
+Failed to parse feed http://moblogsmoproblems.blogspot.com/rss.xml
+
+Failed to parse feed http://beta.blogger.com/feeds/27154654/posts/full?alt=rss
+
+Failed to parse feed http://feeds.feedburner.com/paulstamatiou
+
+Failed to parse feed http://powerlineblog.com/index.rdf
+
+Failed to parse feed http://feeds.feedburner.com/Publishing20
+
+Failed to parse feed http://scobleizer.wordpress.com/feed/
+
+Failed to parse feed http://rss.slashdot.org/Slashdot/slashdot
+
+Failed to parse feed http://feeds.feedburner.com/andrewsullivan/rApM
+
+Failed to parse feed http://wilwheaton.typepad.com/wwdnbackup/index.rdf
+
+Failed to parse feed http://www.43folders.com/feed/
+
+Failed to parse feed http://www.456bereastreet.com/feed.xml
+
+Failed to parse feed http://www.bloggersblog.com/rss.xml
+
+Failed to parse feed http://www.bloglines.com/rss/about/news
+
+Failed to parse feed http://www.buzzmachine.com/index.xml
+
+Failed to parse feed http://www.coolhunting.com/index.rdf
+
+Failed to parse feed http://feeds.feedburner.com/crooksandliars/YaCP
+
+Failed to parse feed http://feeds.dailykos.com/dailykos/index.xml
+
+Failed to parse feed http://www.downloadsquad.com/rss.xml
+
+Failed to parse feed http://www.gapingvoid.com/index.rdf
+
+Failed to parse feed http://www.gawker.com/index.xml
+
+Failed to parse feed http://www.huffingtonpost.com/raw_feed_index.rdf
+
+Failed to parse feed http://www.hyperorg.com/blogger/index.rdf
+
+Failed to parse feed http://www.joystiq.com/rss.xml
+
+Failed to parse feed http://feeds.kottke.org/main
+
+Failed to parse feed http://littlegreenfootballs.com/weblog/lgf-rss.php
+
+Failed to parse feed http://www.makezine.com/blog/index.xml
+
+Failed to parse feed http://xml.metafilter.com/rss.xml
+
+Failed to parse feed http://www.micropersuasion.com/index.rdf
+
+Failed to parse feed http://www.perezhilton.com/index.xml
+
+Failed to parse feed http://www.plasticbag.org/index.rdf
+
+Failed to parse feed http://feeds.feedburner.com/QuickOnlineTips
+
+Failed to parse feed http://www.readwriteweb.com/rss.xml
+
+Failed to parse feed http://www.schneier.com/blog/index.rdf
+
+Failed to parse feed http://scienceblogs.com/sample/combined.xml
+
+Failed to parse feed http://www.seroundtable.com/index.rdf
+
+Failed to parse feed http://www.sifry.com/alerts/index.rdf
+
+Failed to parse feed http://www.simplebits.com/xml/rss.xml
+
+Failed to parse feed http://feeds.feedburner.com/Spikedhumor
+
+Failed to parse feed http://www.stevepavlina.com/blog/feed
+
+Failed to parse feed http://www.talkingpointsmemo.com/index.xml
+
+Failed to parse feed http://feeds.feedburner.com/TechCrunch
+
+Failed to parse feed http://www.thesuperficial.com/index.xml
+
+Failed to parse feed http://www.treehugger.com/index.rdf
+
+Failed to parse feed http://www.tuaw.com/rss.xml
+
+Failed to parse feed http://www.valleywag.com/index.xml
+
+Failed to parse feed http://www.we-make-money-not-art.com/index.rdf
+
+Failed to parse feed http://www.wonkette.com/index.xml
+
+Copyblogger
+Engadget RSS Feed
+ProBlogger
+mezzoblue
+ShoeMoney
+NB Blog Feed
+Matt Cutts: Gadgets, Google, and SEO
+Gothamist
+Techdirt.
+ongoing by Tim Bray
+Neil Gaiman's Journal
+Joel on Software
+Wired
+Kotaku
+Derek Powazek
+Captain's Quarters
+ThinkProgress
+blog maverick
+pharyngula
+Autoblog
+Google Blogoscoped
+Deadspin
+TMZ.com
+O'Reilly Radar
+Lifehacker
+Lifehack - Feed
+Boing Boing
+TechEBlog
+Gizmodo
+Seth's Blog
+Oilman
+Guy Kawasaki
