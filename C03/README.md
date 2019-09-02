@@ -184,28 +184,288 @@ Hierarchical Clustering
 
 这种图形绘制方式能够帮助我们有效地确定一个聚类中各元素间的相似程度，并以此来指示聚类的**紧密程度**。
 
+---
 
+目标：如何对博客数据集进行聚类，以构造博客的层级结构。若构造成功，我们将实现按主题对博客进行分组。
 
+[clusters.py](clusters.py)
 
+首先加载文件
 
+	def readfile(filename):
+	  lines=[line for line in file(filename)]
+	  
+	  # First line is the column titles
+	  colnames=lines[0].strip().split('\t')[1:]
+	  rownames=[]
+	  data=[]
+	  for line in lines[1:]:
+	    p=line.strip().split('\t')
+	    # First column in each row is the rowname
+	    rownames.append(p[0])
+	    # The data for this row is the remainder of the row
+	    data.append([float(x) for x in p[1:]])
 
+	        #博客行，单词列名，博客对应单词数
+	  return rownames,colnames,data
 
+---
 
+**紧密度closeness**
 
+在本例子中，一些博客比其他博客包含更多的文章条目，或者文章条目的长度比其他博客的更长，这样会导致这些博客在总体上比其他博客包含更多的词汇。
 
+皮尔逊相关度可以纠正这一问题，因为它判断的其实是两组数据与某条指向的拟合程度。
 
+	from math import sqrt
+	
+	#接受两个数字列表作参数
+	def pearson(v1,v2):
+	  # Simple sums
+	  sum1=sum(v1)
+	  sum2=sum(v2)
+	  
+	  # Sums of the squares
+	  sum1Sq=sum([pow(v,2) for v in v1])
+	  sum2Sq=sum([pow(v,2) for v in v2])	
+	  
+	  # Sum of the products
+	  pSum=sum([v1[i]*v2[i] for i in range(len(v1))])
+	  
+	  # Calculate r (Pearson score)
+	  num=pSum-(sum1*sum2/len(v1))
+	  den=sqrt((sum1Sq-pow(sum1,2)/len(v1))*(sum2Sq-pow(sum2,2)/len(v1)))
+	  if den==0: return 0
+	
+	  #1.0-皮尔逊相关度，这样做的目的是为了让相似度越大的两个元素之间的距离变得更小
+	  return 1.0-num/den
 
+皮尔逊相关度的计算结果在两者完全匹配的情况下为1.0，而在两者毫无关系的情况下则为0.0。
 
+---
 
+分级聚类算法中的每一个聚类，可以是树中的枝节点，也可以是与数据集中实际数据行相对应的叶节点（如博客）。
+
+每一个聚类还包含了指示其位置的信息，这一信息可以是来自叶节点的行数据，也可以来自枝节点经合并后的数据。
+
+	#聚类节点结构
+	class bicluster:
+	  def __init__(self,vec,left=None,right=None,distance=0.0,id=None):
+	    self.left=left
+	    self.right=right
+	    self.vec=vec
+	    self.id=id
+	    self.distance=distance
+
+---
+
+分级聚类算法以一组对应于原始数据项的聚类开始。函数的主循环部分会尝试每一组可能的配对并计算他们的相关度，以此来找出最佳配对。最佳配对的两个聚类会被合并成一个新的聚类。
+
+新生成的聚类中所包含的数据，等于将两个旧聚类的数据求均值之后得到的结果。这一过程一直重复下去，直到只剩下一个聚类为止。
+
+	def hcluster(rows,distance=pearson):
+	  distances={}
+	  currentclustid=-1
+	
+	  # Clusters are initially just the rows
+	  # 最初的数据
+	  clust=[bicluster(rows[i],id=i) for i in range(len(rows))]
+	
+	  while len(clust)>1:
+	    lowestpair=(0,1)
+	    closest=distance(clust[0].vec,clust[1].vec)
+	
+	    # loop through every pair looking for the smallest distance
+	    for i in range(len(clust)):
+	      for j in range(i+1,len(clust)):
+
+	        # distances is the cache of distance calculations
+			#缓存距离计算
+	        if (clust[i].id,clust[j].id) not in distances: 
+	          distances[(clust[i].id,clust[j].id)]=distance(clust[i].vec,clust[j].vec)
+	
+	        d=distances[(clust[i].id,clust[j].id)]
+
+			#与目前最小距离的进行比较
+	        if d<closest:
+	          closest=d
+	          lowestpair=(i,j)
+	
+	    # calculate the average of the two clusters
+	    mergevec=[
+	    (clust[lowestpair[0]].vec[i]+clust[lowestpair[1]].vec[i])/2.0 
+	    for i in range(len(clust[0].vec))]
+	
+	    # create the new cluster
+	    newcluster=bicluster(mergevec,left=clust[lowestpair[0]],
+	                         right=clust[lowestpair[1]],
+	                         distance=closest,id=currentclustid)
+	
+	    # cluster ids that weren't in the original set are negative
+	    currentclustid-=1
+
+		# 移除最近一对
+	    del clust[lowestpair[1]]
+	    del clust[lowestpair[0]]
+	    clust.append(newcluster)
+		#这里结束while一次循环
+	
+	  return clust[0]
+
+---
+
+用先序遍历二叉树方式遍历这聚类树，打印结果
+
+	def printclust(clust,labels=None,n=0):
+	  # indent to make a hierarchy layout
+	  for i in range(n): print ' ',
+	  if clust.id<0:
+	    # negative id means that this is branch
+	    print '-'
+	  else:
+	    # positive id means that this is an endpoint
+	    if labels==None: print clust.id
+	    else: print labels[clust.id]
+	
+	  # now print the right and left branches
+	  if clust.left!=None: printclust(clust.left,labels=labels,n=n+1)
+	  if clust.right!=None: printclust(clust.right,labels=labels,n=n+1)
+
+---
+
+运行程序：
+
+	>>> import clusters
+	>>> blognames,words,data=clusters.readfile('blogdata.txt')
+	>>> clust=clusters.hcluster(data)
+	>>> clusters.printclust(clust, labels=blognames)
+	-
+	  gapingvoid: "cartoons drawn on the back of business cards"
+	  -
+	    -
+	      Schneier on Security
+	      Instapundit.com
+	    -
+	      The Blotter
+	      -
+	        -
+	          MetaFilter
+	          -
+
+[更详尽的输出结果](result2.txt)
+
+通过仔细观察，应该能够从中找到政治博客的聚类、技术类博客，以及与撰写博客相关的聚类。
+
+**另外**，从上述结果中我们可能也会注意到一些例外的情况。
+
+一些博客的作者也许并没有撰写过相同主题的文章，但是聚类算法却会判断他们的单词频度具有相关性。
+
+这有可能是博客作者们写作风格的一种反应，当然也可能只是基于数据下载当天的一个巧合而得出的结论。
 
 
 ## 绘制树状图 ##
 
+Draw the dendrogram
+
+用更清晰的图代替文字结果输出。
+
+需要安装PIL库
+
+---
+
+首先，计算出给定聚类树的总体高度（我理解为输出图片的高度）
+
+**二叉树先序遍历方式计算**
+
+	def getheight(clust):
+	  # Is this an endpoint? Then the height is just 1
+	  if clust.left==None and clust.right==None: return 1
+	
+	  # Otherwise the height is the same of the heights of
+	  # each branch
+	  return getheight(clust.left)+getheight(clust.right)
+
+---
+
+需要知道跟节点的总体误差。因为线条的长度会根据每个节点的误差进行相应的调整，所以需要根据总的误差值生成一个缩放因子。
+
+	def getdepth(clust):
+	  # The distance of an endpoint is 0.0
+	  if clust.left==None and clust.right==None: return 0
+	
+	  # The distance of a branch is the greater of its two sides
+	  # plus its own distance
+	  return max(getdepth(clust.left),getdepth(clust.right))+clust.distance
+
+---
+
+画图的主要函数
+
+	def drawdendrogram(clust,labels,jpeg='clusters.jpg'):
+	  # height and width
+	  h=getheight(clust)*20
+	  w=1200
+	  depth=getdepth(clust)
+	
+	  # width is fixed, so scale distances accordingly
+	  scaling=float(w-150)/depth
+	
+	  # Create a new image with a white background
+	  img=Image.new('RGB',(w,h),(255,255,255))
+	  draw=ImageDraw.Draw(img)
+	
+	  draw.line((0,h/2,10,h/2),fill=(255,0,0))    
+	
+	  # Draw the first node
+	  drawnode(draw,clust,10,(h/2),scaling,labels)
+	  img.save(jpeg,'JPEG')
+
+---
+
+画聚类节点的函数
+
+水平线长度是由聚类中的误差情况决定。
+
+线条越长就越表明，合并在一起的两个聚类差别很大，而线条越短则越表明，两个聚类相似度很高。
+
+	def drawnode(draw,clust,x,y,scaling,labels):
+	  if clust.id<0:
+	    h1=getheight(clust.left)*20
+	    h2=getheight(clust.right)*20
+	    top=y-(h1+h2)/2
+	    bottom=y+(h1+h2)/2
+
+	    # Line length
+	    ll=clust.distance*scaling
+
+	    # Vertical line from this cluster to children    
+	    draw.line((x,top+h1/2,x,bottom-h2/2),fill=(255,0,0))    
+	    
+	    # Horizontal line to left item
+	    draw.line((x,top+h1/2,x+ll,top+h1/2),fill=(255,0,0))    
+	
+	    # Horizontal line to right item
+	    draw.line((x,bottom-h2/2,x+ll,bottom-h2/2),fill=(255,0,0))        
+	
+	    # Call the function to draw the left and right nodes    
+	    drawnode(draw,clust.left,x+ll,top+h1/2,scaling,labels)
+	    drawnode(draw,clust.right,x+ll,bottom-h2/2,scaling,labels)
+	  else:   
+	    # If this is an endpoint, draw the item label
+	    draw.text((x+5,y-7),labels[clust.id],(0,0,0))
+
+---
+
+运行程序
+
+	>>> clusters.drawdendrogram(clust,blognames,jpeg='blogclust.jpg')
+
+![聚类树状图](blogclust.jpg)
 
 
 ## 列聚类 ##
 
-
+Column Clustering
 
 ## K-均值聚类 ##
 
