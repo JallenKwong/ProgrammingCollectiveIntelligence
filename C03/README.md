@@ -467,13 +467,168 @@ Draw the dendrogram
 
 Column Clustering
 
+同时在行和列上对数据进行聚类常常是很有必要的。
+
+当进行市场研究的时候，对消费群体进行分组可能是有意义的，这将有助于摸清消费者的统计信息和产品的状况，还可能有助于确定上架商品可以进行捆绑销售。
+
+在博客数据集中，列代表的是单词，知道哪些单词时常会结合在一起使用，可能是非常有意义的。
+
+为完成目的，需将行列调换
+
+	def rotatematrix(data):
+	  newdata=[]
+	  for i in range(len(data[0])):
+	    newrow=[data[j][i] for j in range(len(data))]
+	    newdata.append(newrow)
+	  return newdata
+
+然后进行聚类
+
+	>>> blognames,words,data=clusters.readfile('blogdata.txt')
+	>>> rdata = clusters.rotatematrix(data)
+	>>> wordclust = clusters.hcluster(rdata)
+	>>> clusters.drawdendrogram(wordclust,labels=words,jpeg='wordclust.jpg')
+
+[运行后的树状图](wordclust.jpg)
+
+关于聚类有一点很重要：当数据项的数量比变量多的时候，出现无意义聚类的可能性增加。
+
+由于单词的数量比博客多很多，因此我们会发现，在博客聚类中出现的模式pattern要比单词聚类中出现的更为合理。
+
 ## K-均值聚类 ##
 
+分级聚类的结果返回一棵直观的树。
+
+但是，分级聚类有两个**缺点**。
+
+1. 在没有额外投入的情况下，树状视图是不会真正将数据拆分成不同组的。
+2. 而且算法的计算量非常惊人。（因为必须计算每两个配对项之间的关系，并且在合并项后，这些关系还得重新再计算，所以在处理很大规模的数据集时，该算法的运行速度会非常缓慢）
+
+---
+
+**K-均值聚类**，不同于分级聚类，因为会预先告诉算法希望生成的聚类数量，然后算法会根据数据的结构状况来确定聚类的大小。
+
+K-均值聚类算法
+
+1. 首先会随机确定K个中心位置（位于空间中代表聚类中心的点）；
+2. 然后将各个数据项分配给最临近的中心点；
+3. 待分配完成之后，聚类中心就会移到分配给该聚类的所有节点的平均位置处，然后整个分配过程重新开始。
+
+这一过程会一直重复下去，直到分配过程不再产生变化为止。
+
+![](image/04.png)
+
+	def kcluster(rows,distance=pearson,k=4):
+	  # Determine the minimum and maximum values for each point
+	  ranges=[(min([row[i] for row in rows]),max([row[i] for row in rows])) 
+	  for i in range(len(rows[0]))]
+	
+	  # Create k randomly placed centroids
+	  clusters=[[random.random()*(ranges[i][1]-ranges[i][0])+ranges[i][0] 
+	  for i in range(len(rows[0]))] for j in range(k)]
+	  
+	  lastmatches=None
+	  for t in range(100):
+	    print 'Iteration %d' % t
+	    bestmatches=[[] for i in range(k)]
+	    
+	    # Find which centroid is the closest for each row
+	    for j in range(len(rows)):
+	      row=rows[j]
+	      bestmatch=0
+	      for i in range(k):
+	        d=distance(clusters[i],row)
+	        if d<distance(clusters[bestmatch],row): bestmatch=i
+	      bestmatches[bestmatch].append(j)
+	
+	    # If the results are the same as last time, this is complete
+	    if bestmatches==lastmatches: break
+	    lastmatches=bestmatches
+	    
+	    # Move the centroids质心 to the average of their members
+	    for i in range(k):
+	      avgs=[0.0]*len(rows[0])
+	      if len(bestmatches[i])>0:
+	        for rowid in bestmatches[i]:
+	          for m in range(len(rows[rowid])):
+	            avgs[m]+=rows[rowid][m]
+	        for j in range(len(avgs)):
+	          avgs[j]/=len(bestmatches[i])
+	        clusters[i]=avgs
+	      
+	  return bestmatches
+
+与分级聚类相比，该算法为产生最终结果所需迭代次数是非常少的。
+
+由于函数选用随机中心点作为开始，所以返回结果的顺序几乎总是不同的。根据中心点初始位置的不同，最终聚类中所包含的内容也可能会有所不同。
+
+	>>> 
+	>>> kclust = clusters.kcluster(data, k = 10)
+	Iteration 0
+	Iteration 1
+	Iteration 2
+	Iteration 3
+	Iteration 4
+	>>> [blognames[r] for r in kclust[0]]
+	['Blog Maverick', 'Joystiq', 'Download Squad', 'CoolerHeads Prevail', 'The Unofficial Apple Weblog (TUAW)']
+	>>> [blognames[r] for r in kclust[1]]
+	['GigaOM', 'Kotaku', 'Gizmodo', 'Topix.net Weblog', 'TechEBlog', 'kottke.org', 'Joel on Software', 'WWdN: In Exile']
+	>>> 
 
 
 ## 针对偏好的聚类 ##
 
+[Zebo](http://www.zebo.com)它鼓励人们在网站上建立账号，并将他们已经拥有的和希望拥有的物品列举出来。
 
+从广告商角度而言，可以找方法，将偏好相近者很自然地分在一组。
+
+[Zebo](http://www.zebo.com)目前不能被访问。
+
+### 获取数据和准备数据 ###
+
+通过爬虫方式进行爬取目标网站的数据。
+
+[已经准备好的数据文件](zebo.txt)
+
+### BeautifulSoup ###
+
+Python的HTML的选择器
+
+### 收集来自Zebo的结果 ###
+
+[爬取Zebo数据脚本](downloadzebodata.py)
+
+### 定义距离度量标准 ###
+
+假如我们对同时希望拥有两件物品的人在物品方面互有重叠的情况进行度量。
+
+![](image/05.png)
+
+	def tanamoto(v1,v2):
+	  c1,c2,shr=0,0,0
+	  
+	  for i in range(len(v1)):
+	    if v1[i]!=0: c1+=1 # in v1
+	    if v2[i]!=0: c2+=1 # in v2
+	    if v1[i]!=0 and v2[i]!=0: shr+=1 # in both
+	  
+	  return 1.0-(float(shr)/(c1+c2-shr))
+
+返回(0.0, 1.0)之间的值。
+
+其中1.0代表不存在同时喜欢两件物品的人，而0.0则代表所有人都同时喜欢两个向量中的物品。
+
+### 对结果进行聚类 ###
+
+	>>> import clusters
+	>>> wants,people,data=clusters.readfile('zebo.txt')
+	>>> clust = clusters.hcluster(data,distance=clusters.tanamoto)
+	>>> clusters.drawdendrogram(clust, wants)
+	>>> 
+
+![](clusters.jpg)
+
+图中包含聚类反映人们希望拥有的物品。
 
 ## 以二维形式展现数据 ##
 
