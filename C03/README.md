@@ -2,6 +2,44 @@
 
 Discovering Groups
 
+[1.监督学习和无监督学习](#监督学习和无监督学习)
+
+[1.1.监督学习](#监督学习)
+
+[1.2.无监督学习](#无监督学习)
+
+[2.单词向量](#单词向量)
+
+[2.1.对博客用户进行分类](#对博客用户进行分类)
+
+[2.2.对订阅源中的单词进行计数](#对订阅源中的单词进行计数)
+
+[3.分级聚类](#分级聚类)
+
+[4.绘制树状图](#绘制树状图)
+
+[5.列聚类](#列聚类)
+
+[6.K-均值聚类](#k-均值聚类)
+
+[7.针对偏好的聚类](#针对偏好的聚类)
+
+[7.1.获取数据和准备数据](#获取数据和准备数据)
+
+[7.2.BeautifulSoup](#beautifulsoup)
+
+[7.3.收集来自Zebo的结果](#收集来自zebo的结果)
+
+[7.4.定义距离度量标准](#定义距离度量标准)
+
+[7.5.对结果进行聚类](#对结果进行聚类)
+
+[8.以二维形式展现数据](#以二维形式展现数据)
+
+[9.有关聚类的其他事宜](#有关聚类的其他事宜)
+
+[10.小结](#小结)
+
 **数据聚类data clustering**是一种用以寻找紧密相关的事、人或观点，并将其可视化的方法。
 
 聚类时常被用于有很大数据量的应用。
@@ -632,13 +670,148 @@ Python的HTML的选择器
 
 ## 以二维形式展现数据 ##
 
+**多维缩放multidimensional scaling**
 
+利用这项技术，可以为数据集找到一种二维表达方式。
+
+算法根据每队数据项之间的差距情况，尝试绘制出一幅画来，图中各数据项之间距离远近，对于它们彼此之间的差异程度。
+
+**为了做到这一点，算法首先必须计算出所有项之间的距离**。
+
+在博客数据集中，采用皮尔逊相关度技术来对各数据项进行比较。
+
+作为例子，列出各点之间距离
+
+![](image/06.png)
+
+下一步，我们将所有数据项随机放置在二维图上
+
+![](image/07.png)
+
+所有数据项两两之间的当前距离值都是根据实际距离（即差平方之和）计算求得：
+
+![](image/08.png)
+
+针对每两两构成的一对数据项，将它们的目标距离与当前距离进行比较，并求出一个误差值。根据误差的情况，会按照比例将每个数据项的所在位置移近或移动少许。
+
+![](image/09.png)
+
+每个节点的移动，都是所有其他节点施加在该节点上推或拉的综合效应。节点每移动一次，其当前距离和目标距离间的差距就会减少一些。这一过程会不断地重复多次，直到无法再通过移动节点来减少总体误差为止。
+
+	def scaledown(data,distance=pearson,rate=0.01):
+	  n=len(data)
+	
+	  # The real distances between every pair of items
+	  realdist=[[distance(data[i],data[j]) for j in range(n)] 
+	             for i in range(0,n)]
+	
+	  # Randomly initialize the starting points of the locations in 2D
+	  loc=[[random.random(),random.random()] for i in range(n)]
+	  fakedist=[[0.0 for j in range(n)] for i in range(n)]
+	  
+	  lasterror=None
+	  for m in range(0,1000):
+	    # Find projected distances
+	    # 寻找投影后的距离
+	    for i in range(n):
+	      for j in range(n):
+	        fakedist[i][j]=sqrt(sum([pow(loc[i][x]-loc[j][x],2) 
+	                                 for x in range(len(loc[i]))]))
+	  
+	    # Move points
+	    grad=[[0.0,0.0] for i in range(n)]
+	    
+	    totalerror=0
+	    for k in range(n):
+	      for j in range(n):
+	        if j==k: continue
+	        # The error is percent difference between the distances
+	        # 误差值等于目标距离与当前距离之间差值的百分比
+	        errorterm=(fakedist[j][k]-realdist[j][k])/realdist[j][k]
+	        
+	        # Each point needs to be moved away from or towards the other
+	        # point in proportion to how much error it has
+	        # 每一节点都需要根据误差的多少，按比例移离或移向其他节点
+	        grad[k][0]+=((loc[k][0]-loc[j][0])/fakedist[j][k])*errorterm
+	        grad[k][1]+=((loc[k][1]-loc[j][1])/fakedist[j][k])*errorterm
+	
+	        # Keep track of the total error
+	        totalerror+=abs(errorterm)
+	    print totalerror
+	
+	    # If the answer got worse by moving the points, we are done
+	    if lasterror and lasterror<totalerror: break
+	    lasterror=totalerror
+	    
+	    # Move each of the points by the learning rate times the gradient
+	    for k in range(n):
+	      loc[k][0]-=rate*grad[k][0]
+	      loc[k][1]-=rate*grad[k][1]
+	
+	  return loc
+
+然后生成图，直观观察结果
+
+	def draw2d(data,labels,jpeg='mds2d.jpg'):
+	  img=Image.new('RGB',(2000,2000),(255,255,255))
+	  draw=ImageDraw.Draw(img)
+	  for i in range(len(data)):
+	    x=(data[i][0]+0.5)*1000
+	    y=(data[i][1]+0.5)*1000
+	    draw.text((x,y),labels[i],(0,0,0))
+	  img.save(jpeg,'JPEG')
+
+运行程序
+
+	>>> import clusters
+	>>> blognames,words,data=clusters.readfile('blogdata.txt')
+	>>> coords=clusters.scaledown(data)
+	4422.6373557
+	3534.9850016
+	3459.11229077
+	3425.48501225
+	3401.19420001
+	3380.22252584
+	3362.67067985
+	3348.20329197
+	...
+	>>> clusters.draw2d(coords,blognames,jpeg='blogs2d.jpg')
+	>>>
+
+多维缩放算法的执行效果
+
+![](blogs2d.jpg)
+
+多维缩放是一种非常有效的方法，利用它将获取到的数据集以一种易于解释的方式形象化地展现出来。**注意！**在缩放过程当中一些信息可能会丢失掉。
 
 ## 有关聚类的其他事宜 ##
 
+可以将本章提供的这些思路扩展到不同的领域，从中寻找富有价值的结论
+
+1. 基于单词的信息公告栏；
+2. 基于各种数字统计的来自Yahoo!Finance的公司信息；
+3. Amazon上的书评者排行；
+4. 研究大型社区网络，根据用户的好友光系，或者是利用用户可能提供的其他信息（喜欢的乐队、食物等）对人群进行聚类。
 
 
+## 小结 ##
 
+聚类算法
 
+1. 分级聚类Hierarchical Clustering
+2. K-均值聚类K-Means Clustering
+3. 前两项分别的列聚类
 
+---
 
+本章用到计算两节点距离算法
+
+1. 皮尔逊相关度
+2. Tanimoto系数
+
+---
+
+展现结果的画图方法
+
+1. 树状图Dendrogram
+2. 二维距离展现图
