@@ -286,13 +286,162 @@ isindexed函数的作用是判断网页是否已经存入数据库。
 
 ## 基于内容的排名 ##
 
+在获得与查询条件相匹配的网页。
+
+但是，其返回结果的排列顺序却很简单，即其被检索时的顺序。
+
+而面对大量的网页，**为了能够从中找出与査询真正匹配的页面**，我们就不得不在大量毫不相干的内容中逐一进行浏览，以搜寻任何对查询条件中某一部分内容有所提及的结果。
+
+为了解决这一向题，**我们须要找到一种能够针对给定査询条件为网页进行评价的方法**，并且能在返回结果中将评价最高者排在最前面。
+
+评价度量方法
+
+1. 单词频度
+2. 文档位置
+3. 单词距离
+
+
+	  def getscoredlist(self,rows,wordids):
+	    totalscores=dict([(row[0],0) for row in rows])
+	
+	    # This is where we'll put our scoring functions
+	    weights=[(1.0,self.locationscore(rows)), 
+	             (1.0,self.frequencyscore(rows)),
+	             (1.0,self.pagerankscore(rows)),
+	             (1.0,self.linktextscore(rows,wordids)),
+	             (5.0,self.nnscore(rows,wordids))]
+	    for (weight,scores) in weights:
+	      for url in totalscores:
+	        totalscores[url]+=weight*scores[url]
+	
+	    return totalscores
+	
+	  #根据urlid查找数据库得出url
+	  def geturlname(self,id):
+	    return self.con.execute(
+	    "select url from urllist where rowid=%d" % id).fetchone()[0]
+	
+	  def query(self,q):
+	    rows,wordids=self.getmatchrows(q)
+
+	    #根据评价算法得出评分
+	    scores=self.getscoredlist(rows,wordids)
+	    rankedscores=[(score,url) for (url,score) in scores.items()]
+	    rankedscores.sort()
+	    rankedscores.reverse()
+
+		#根据评分，从高到低打印结果网页
+	    for (score,urlid) in rankedscores[0:10]:
+	      print '%f\t%s' % (score,self.geturlname(urlid))
+	    return wordids,[r[1] for r in rankedscores[0:10]]
+
+### 归一化函数 ###
+
+Normalization Function 
+
+因为，有的评价方法分值越大越好，而有的分值越小越好。
+
+为了对不同方法的返回结果进行比较，需要一种对结果进行**归一化**处理的方法，即**令它们具有相同的值域及变化反向**。
+
+	  def normalizescores(self,scores,smallIsBetter=0):
+	    vsmall=0.00001 # Avoid division by zero errors
+	    if smallIsBetter:
+	      minscore=min(scores.values())
+	      return dict([(u,float(minscore)/max(vsmall,l)) for (u,l) in scores.items()])
+	    else:
+	      maxscore=max(scores.values())
+	      if maxscore==0: maxscore=vsmall
+	      return dict([(u,float(c)/maxscore) for (u,c) in scores.items()])
+
+每个评价函数都会调用该函数，将结果进行归一化处理，并返回一个介于0和1之间的值。
+
+### 单词频度 ###
+
+根据查询条件中的单词在网页中出现的次数对网页进行评价
+
+	  def frequencyscore(self,rows):
+	    counts=dict([(row[0],0) for row in rows])
+	    for row in rows: counts[row[0]]+=1
+	    return self.normalizescores(counts)
+
+通常一个搜索引擎不会将评价结果告诉最终用户
+
+但是对某些引用而言，这些评价值可能非常有用。
+
+例如，
+
+1. 我们希望在超出某个值域的时候，直接向用户返回排名最靠前的内容
+2. 希望根据返回结果的相关程度，按一定比例的字体大小加以显示。
+
+### 文档位置 ###
+
+document location
+
+通常，若一个网页与待搜索的单词相关，则该单词就更改有可能在靠近网页开始处的位置出现，甚至是出现在标题中。
+
+利用这一点，搜索引擎可对待查单词在文档中出现越早的情况给予越高的评价。
+
+	  def locationscore(self,rows):
+	    locations=dict([(row[0],1000000) for row in rows])
+	    for row in rows:
+		  # 单词们的位置和，位置和越小，说明它们越靠近网页前部
+	      loc=sum(row[1:])
+	      if loc < locations[row[0]]:
+			locations[row[0]] = loc
+	    
+	    return self.normalizescores(locations,smallIsBetter=1)
+
+介绍的度量方法中，没有任何一个方法对于每一种情况而言都是最优的。
+
+取决于搜索者的意图，上述各种搜索结果都是有效的，而且对于一组特定的文档与应用而言，为了给出最佳结果，不同的**加权组合**是必要的。
+
+    # This is where we'll put our scoring functions
+    weights=[(1.0,self.locationscore(rows)), 
+             (1.0,self.frequencyscore(rows)),
+             (1.0,self.pagerankscore(rows)),
+             (1.0,self.linktextscore(rows,wordids)),
+             (5.0,self.nnscore(rows,wordids))]
+
+### 单词距离 ###
+
+	  def distancescore(self,rows):
+	    # If there's only one word, everyone wins!
+	    if len(rows[0])<=2: return dict([(row[0],1.0) for row in rows])
+	
+	    # Initialize the dictionary with large values
+	    mindistance=dict([(row[0],1000000) for row in rows])
+	
+	    for row in rows:
+		  # 单词们 两两相连 的相减得差之和
+	      dist=sum([abs(row[i]-row[i-1]) for i in range(2,len(row))])
+		  # row[0]表示urlid
+	      if dist<mindistance[row[0]]: mindistance[row[0]]=dist
+	    return self.normalizescores(mindistance,smallIsBetter=1)
 
 ## 利用外部会指链接 ##
+
+### 简单计数 ###
+
+
+### PageRank算法 ###
+
+
+### 利用连接文本 ###
 
 
 ## 从点击行为中学习 ##
 
+### 一个点击跟踪网络的设计 ###
 
+### 设计数据库 ###
+
+### 前馈法 ###
+
+### 利用反向传播进行训练 ###
+
+### 训练实验 ###
+
+### 与搜索引擎结合 ###
 
 ## 小结 ##
 
