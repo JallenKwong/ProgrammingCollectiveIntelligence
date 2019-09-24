@@ -420,18 +420,152 @@ document location
 
 ## 利用外部会指链接 ##
 
+先前对评价的度量都是基于**网页内容**。
+
+现在考查外界就该网页提供内容——谁链向了该网页，以及他们对该网页的评价，来进一步改善搜索结果。
+
+这方法可避免可疑内容的网页或垃圾内容制造者生成的网页建立索引。
+
+接下来用到的数据库表，links表和linkwords表。
+
+1. links表中记录了与其源和目的相对应的URL ID；
+2. linkwords表记录链接网页有哪些单词。
+
+
 ### 简单计数 ###
 
+在每个网页上统计链接的数目，并将链接总数作为针对网页的度量。
+
+科研论文的评论就经常采用这种方式，人们将论文的重要程度与其他论文对该论文的引用次数联系了起来。
+
+	  def inboundlinkscore(self,rows):
+	    uniqueurls=dict([(row[0],1) for row in rows])
+	    inboundcount=dict([(u,self.con.execute('select count(*) from link where toid=%d' % u).fetchone()[0]) for u in uniqueurls])   
+	    return self.normalizescores(inboundcount)
 
 ### PageRank算法 ###
 
+该算法为每个网页都赋予了一个指示网页重要程度的评价值。
+
+网页的重要性是依据指向该网页的所有其他网页的重要性，以及网页中所包含的链接数求得的。
+
+若某个网页拥有来自其他热门网页的外部回指链接越多，人们无意间到达网页的可能性也就越大。
+
+当然，若用户始终不停地点击，那么他们始终将到达每一个网页，但是大多数人在浏览一段时间后都会停止点击。为了反映这一种情况，PageRank还使用了一个值为0.85的**阻尼因子**，用以指示用户持续点击每个网页中链接的概率为85%.
+
+计算A的PageRank的值
+
+![](image/05.png)
+
+![](image/06.png)
+
+一开始为每一个网页的PageRank值赋予初始值，如1.0，然后反复计算，迭代若干次。
+
+迭代地越多，每个网页的PageRank值将会越来越接近真实值。通常迭代20次足够。
+
+---
+
+PageRank的计算是一项**耗时**的工作，而且其计算结果又不随查询的变化而变化。
+
+因此，可预先为每个URL计算好PageRank的值，并将结果缓存。
+
+	  def calculatepagerank(self,iterations=20):
+
+	    # clear out the current page rank tables
+	    self.con.execute('drop table if exists pagerank')
+	    self.con.execute('create table pagerank(urlid primary key,score)')
+	    
+
+	    # initialize every url with a page rank of 1
+	    for (urlid,) in self.con.execute('select rowid from urllist'):
+	      self.con.execute('insert into pagerank(urlid,score) values (%d,1.0)' % urlid)
+	    self.dbcommit()
+	    
+	    for i in range(iterations):
+	      print "Iteration %d" % (i)
+	      for (urlid,) in self.con.execute('select rowid from urllist'):
+
+			# 网页PageRank值的最小值
+	        pr=0.15
+	        
+	        # Loop through all the pages that link to this one
+	        for (linker,) in self.con.execute(
+	        'select distinct fromid from link where toid=%d' % urlid):
+	          # Get the page rank of the linker
+	          linkingpr=self.con.execute(
+	          'select score from pagerank where urlid=%d' % linker).fetchone()[0]
+	
+	          # Get the total number of links from the linker
+	          linkingcount=self.con.execute(
+	          'select count(*) from link where fromid=%d' % linker).fetchone()[0]
+	          pr += 0.85*(linkingpr/linkingcount)
+	        self.con.execute(
+	        'update pagerank set score=%f where urlid=%d' % (pr,urlid))
+	      self.dbcommit()
+
+![运行结果](image/07.png)
+
+然后对PageRank进行归一化处理。
+
+	  def pagerankscore(self,rows):
+	    pageranks=dict([(row[0],self.con.execute('select score from pagerank where urlid=%d' % row[0]).fetchone()[0]) for row in rows])
+	    maxrank=max(pageranks.values())
+	    normalizedscores=dict([(u,float(l)/maxrank) for (u,l) in pageranks.items()])
+	    return normalizedscores
 
 ### 利用连接文本 ###
 
+根据指向某一网页的链接文本来决定网页的相关程度。
+
+	  def linktextscore(self,rows,wordids):
+	    linkscores = dict([(row[0],0) for row in rows])
+	    for wordid in wordids:
+	      cur=self.con.execute('select link.fromid,link.toid from linkwords,link where wordid =%d and linkwords.linkid=link.rowid' % wordid)
+	      for (fromid,toid) in cur:
+	        if toid in linkscores:
+
+			  # 这里用到PageRank值
+	          pr=self.con.execute('select score from pagerank where urlid=%d' % fromid).fetchone()[0]
+	          linkscores[toid] += pr
+	    maxscore = max(linkscores.values())
+	    normalizedscores=dict([(u,float(l)/maxscore) for (u,l) in linkscores.items()])
+	    return normalizedscores
 
 ## 从点击行为中学习 ##
 
+对于搜索引擎而言，每一位用户可以通过只点击某条搜索结果，而不选择点击其他内容，向引擎几时提供有关于它对搜索结果喜好程度的信息。
+
+目的：将记录用户点击查询结果的情况，并利用这一信息来改进搜索结果的排名。
+
+---
+
+方法：构造一个**人工神经网络**，向其提供：查询条件中的单词，返回给用户的搜索结果，以及用户的点击决策，然后再对其加以训练。
+
+一旦网络经过了许多不同查询的训练之后，就可以利用它来改进搜索结果的排序，以更好地反映用户在过去一段时间里的实际点击情况。
+
+
 ### 一个点击跟踪网络的设计 ###
+
+![](image/08.png)
+
+为了让神经网络得到最佳查询结果，将于查询条件中出现的单词相对应的输入结点设值为1。
+
+这些节点的输出端开启后，会试图激活隐藏层。相应地，位于隐藏层中的节点如果得到一个足够强力的输入，就会触发其输出层中的节点。
+
+随后，位于输出层中的节点将处于不同程度的活跃状态，可以利用其活跃程度来判断一个URL与原查询中出现的单词在相关性上的紧密程度。
+
+如，下图，神经网络对“world bank”所作出的反应。
+
+![](image/09.png)
+
+最终的结果还取决于被逐渐纠正的连接强度。为此只要有人执行搜索，并从结果中选择链接，就对网络进行训练。
+
+例如，许多人已在搜索“world bank”之后，点击过有关World Bank的相关结果，而这一点加强了单词与URL的关联。
+
+利用**反向传播backpropagation**的算法对网络进行训练。
+
+**神经网络的威力在于**，它能根据与其他查询的相似度情况，对以前从未见过的查询结果做出合理的猜测。
+
 
 ### 设计数据库 ###
 

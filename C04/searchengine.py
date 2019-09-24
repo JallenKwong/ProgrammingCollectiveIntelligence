@@ -164,7 +164,7 @@ class crawler:
           # Get the total number of links from the linker
           linkingcount=self.con.execute(
           'select count(*) from link where fromid=%d' % linker).fetchone()[0]
-          pr+=0.85*(linkingpr/linkingcount)
+          pr += 0.85*(linkingpr/linkingcount)
         self.con.execute(
         'update pagerank set score=%f where urlid=%d' % (pr,urlid))
       self.dbcommit()
@@ -281,15 +281,15 @@ class searcher:
     return self.normalizescores(inboundcount)
 
   def linktextscore(self,rows,wordids):
-    linkscores=dict([(row[0],0) for row in rows])
+    linkscores = dict([(row[0],0) for row in rows])
     for wordid in wordids:
       cur=self.con.execute('select link.fromid,link.toid from linkwords,link where wordid=%d and linkwords.linkid=link.rowid' % wordid)
       for (fromid,toid) in cur:
         if toid in linkscores:
-          pr=self.con.execute('select score from pagerank where urlid=%d' % fromid).fetchone()[0]
-          linkscores[toid]+=pr
-    maxscore=max(linkscores.values())
-    normalizedscores=dict([(u,float(l)/maxscore) for (u,l) in linkscores.items()])
+          pr = self.con.execute('select score from pagerank where urlid=%d' % fromid).fetchone()[0]
+          linkscores[toid] += pr
+    maxscore = max(linkscores.values())
+    normalizedscores = dict([(u,float(l)/maxscore) for (u,l) in linkscores.items()])
     return normalizedscores
 
   def pagerankscore(self,rows):
