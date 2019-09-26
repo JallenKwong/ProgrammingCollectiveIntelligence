@@ -18,28 +18,39 @@ class searchnet:
       self.con.commit()
 
     def getstrength(self,fromid,toid,layer):
-      if layer==0: table='wordhidden'
-      else: table='hiddenurl'
-      res=self.con.execute('select strength from %s where fromid=%d and toid=%d' % (table,fromid,toid)).fetchone()
-      if res==None: 
-          if layer==0: return -0.2
-          if layer==1: return 0
+      if layer==0: 
+		table='wordhidden'
+      else: 
+		table='hiddenurl'
+      res = self.con.execute('select strength from %s where fromid=%d and toid=%d' % (table,fromid,toid)).fetchone()
+      
+	  if res == None: 
+          if layer == 0: 
+			return -0.2
+          if layer == 1: 
+			return 0
       return res[0]
 
     def setstrength(self,fromid,toid,layer,strength):
-      if layer==0: table='wordhidden'
-      else: table='hiddenurl'
-      res=self.con.execute('select rowid from %s where fromid=%d and toid=%d' % (table,fromid,toid)).fetchone()
-      if res==None: 
+      if layer == 0: 
+		table='wordhidden'
+      else: 
+		table='hiddenurl'
+      res = self.con.execute('select rowid from %s where fromid=%d and toid=%d' % (table,fromid,toid)).fetchone()
+	  
+      if res == None: 
         self.con.execute('insert into %s (fromid,toid,strength) values (%d,%d,%f)' % (table,fromid,toid,strength))
       else:
         rowid=res[0]
         self.con.execute('update %s set strength=%f where rowid=%d' % (table,strength,rowid))
 
     def generatehiddennode(self,wordids,urls):
-      if len(wordids)>3: return None
+      
+	  #不能超过3个单词
+	  if len(wordids) > 3: 
+		return None
       # Check if we already created a node for this set of words
-      sorted_words=[str(id) for id in wordids]
+      sorted_words = [str(id) for id in wordids]
       sorted_words.sort()
       createkey='_'.join(sorted_words)
       res=self.con.execute(
@@ -51,9 +62,13 @@ class searchnet:
         "insert into hiddennode (create_key) values ('%s')" % createkey)
         hiddenid=cur.lastrowid
         # Put in some default weights
-        for wordid in wordids:
+        
+		#设置输入层
+		for wordid in wordids:
           self.setstrength(wordid,hiddenid,0,1.0/len(wordids))
-        for urlid in urls:
+        
+		#设置输出层
+		for urlid in urls:
           self.setstrength(hiddenid,urlid,1,0.1)
         self.con.commit()
 

@@ -2,6 +2,58 @@
 
 **由于书本未提供数据文件且提供的链接无法被链接且pysqlite安装失败，所以本章只是阅读学习。**
 
+[1.搜索引擎的组成](#搜索引擎的组成)
+
+[2.一个简单的爬虫程序](#一个简单的爬虫程序)
+
+[2.1.使用urllib2](#使用urllib2)
+
+[2.2.爬虫程序的代码](#爬虫程序的代码)
+
+[3.建立索引](#建立索引)
+
+[3.1.建立数据库Schema](#建立数据库schema)
+
+[3.2.在网页中查找单词](#在网页中查找单词)
+
+[3.3.加入索引](#加入索引)
+
+[4.查询](#查询)
+
+[5.基于内容的排名](#基于内容的排名)
+
+[5.1.归一化函数](#归一化函数)
+
+[5.2.单词频度](#单词频度)
+
+[5.3.文档位置](#文档位置)
+
+[5.4.单词距离](#单词距离)
+
+[6.利用外部会指链接](#利用外部会指链接)
+
+[6.1.简单计数](#简单计数)
+
+[6.2.PageRank算法](#pagerank算法)
+
+[6.3.利用连接文本](#利用连接文本)
+
+[7.从点击行为中学习](#从点击行为中学习)
+
+[7.1.一个点击跟踪网络的设计](#一个点击跟踪网络的设计)
+
+[7.2.设计数据库](#设计数据库)
+
+[7.3.前馈法](#前馈法)
+
+[7.4.利用反向传播进行训练](#利用反向传播进行训练)
+
+[7.5.训练实验](#训练实验)
+
+[7.6.与搜索引擎结合](#与搜索引擎结合)
+
+[8.小结](#小结)
+
 
 全文搜索引擎——Google的PageRank的排名
 
@@ -569,25 +621,362 @@ PageRank的计算是一项**耗时**的工作，而且其计算结果又不随�
 
 ### 设计数据库 ###
 
+新建3个表
+
+1. hiddennode代表隐藏层数据表
+2. 单词层到隐藏层及其连接状态
+3. 隐藏层到单词层及其连接状态
+
+
+	from math import tanh
+	from pysqlite2 import dbapi2 as sqlite
+
+	class searchnet:
+	    def __init__(self,dbname):
+	      self.con=sqlite.connect(dbname)
+	  
+	    def __del__(self):
+	      self.con.close()
+	
+	    def maketables(self):
+	      self.con.execute('create table hiddennode(create_key)')
+	      self.con.execute('create table wordhidden(fromid,toid,strength)')
+	      self.con.execute('create table hiddenurl(fromid,toid,strength)')
+	      self.con.commit()
+
+---
+
+判断当前连接的强度
+
+    def getstrength(self,fromid,toid,layer):
+      if layer==0: 
+		table='wordhidden'
+      else: 
+		table='hiddenurl'
+      res = self.con.execute('select strength from %s where fromid=%d and toid=%d' % (table,fromid,toid)).fetchone()
+      
+	  if res == None: 
+          if layer == 0: 
+			return -0.2
+          if layer == 1: 
+			return 0
+      return res[0]
+
+---
+
+设置新的强度。该函数将会为训练神经网路的代码所用。
+
+    def setstrength(self,fromid,toid,layer,strength):
+      if layer == 0: 
+		table='wordhidden'
+      else: 
+		table='hiddenurl'
+      res = self.con.execute('select rowid from %s where fromid=%d and toid=%d' % (table,fromid,toid)).fetchone()
+	  
+      if res == None: 
+        self.con.execute('insert into %s (fromid,toid,strength) values (%d,%d,%f)' % (table,fromid,toid,strength))
+      else:
+        rowid=res[0]
+        self.con.execute('update %s set strength=%f where rowid=%d' % (table,strength,rowid))
+
+---
+
+可以预先建好所有节点。
+
+每传入一组以前从未见过的单词组合，该函数就会在隐藏层中建立一个新的节点。
+
+随后，函数会为单词与隐藏节点之间，以及查询节点与由查询所返回的URL结果之间，建立其具有默认权重的连接。
+
+    def generatehiddennode(self,wordids,urls):
+      
+	  #不能超过3个单词
+	  if len(wordids) > 3: 
+		return None
+      # Check if we already created a node for this set of words
+      sorted_words = [str(id) for id in wordids]
+      sorted_words.sort()
+      createkey='_'.join(sorted_words)
+      res=self.con.execute(
+      "select rowid from hiddennode where create_key='%s'" % createkey).fetchone()
+
+      # If not, create it # 创建中间的隐藏层
+      if res == None:
+        cur = self.con.execute("insert into hiddennode (create_key) values ('%s')" % createkey)
+        hiddenid = cur.lastrowid
+        # Put in some default weights
+        
+		#设置输入层
+		for wordid in wordids:
+          self.setstrength(wordid,hiddenid,0,1.0/len(wordids))
+        
+		#设置输出层
+		for urlid in urls:
+          self.setstrength(hiddenid,urlid,1,0.1)
+        self.con.commit()
+
+![运行代码结果](image/10.png)
+
+上述执行过程在隐藏层中**建立了一个新的节点**，还建立起了一个指向该新节点的带默认值的链接。
+
+
 ### 前馈法 ###
+
+目的：编写相关的函数，**接受一组单词作为输入，激活网络中的链接，并针对URL给出一组输出结果**。
+
+使用**双曲正切变换函数 hyperbolic tangent**，用以指示每个节点对输入的响应程度。
+
+![](image/11.png)
+
+![](image/12.png)
+
+X轴代表了针对节点的总输入。
+
+神经网络几乎总是利用**S型函数 sigmoid function**来计算神经元的输出
+
+
+	#大概意思wordid和urlid那些已经存入数据库，过滤出来，相当于白名单
+
+	#经过观察后，发现并不是白名单，wordhidden的toid和hiddenurl的from确实是指hiddenid。为啥hiddennode不创建多个字段，从而避免混淆。
+
+	def getallhiddenids(self,wordids,urlids):
+	  l1={}
+	  for wordid in wordids:
+	    cur=self.con.execute(
+	    'select toid from wordhidden where fromid=%d' % wordid)
+	    for row in cur: l1[row[0]]=1
+	  for urlid in urlids:
+	    cur=self.con.execute(
+	    'select fromid from hiddenurl where toid=%d' % urlid)
+	    for row in cur: l1[row[0]]=1
+	  return l1.keys()
+
+建立神经网络
+
+	def setupnetwork(self,wordids,urlids):
+	    # value lists
+	    self.wordids=wordids
+	    self.hiddenids=self.getallhiddenids(wordids,urlids)
+	    self.urlids=urlids
+	
+	    # node outputs
+	    self.ai = [1.0]*len(self.wordids)
+	    self.ah = [1.0]*len(self.hiddenids)
+	    self.ao = [1.0]*len(self.urlids)
+	    
+	    # create weights matrix
+	    self.wi = [[self.getstrength(wordid,hiddenid,0) 
+	                for hiddenid in self.hiddenids] 
+	               for wordid in self.wordids]
+	    self.wo = [[self.getstrength(hiddenid,urlid,1) 
+	                for urlid in self.urlids] 
+	               for hiddenid in self.hiddenids]
+
+---
+
+最后构造前馈算法。
+
+该算法接受一列输入，将其推入网络，然后返回所有输出层结点的输出结果
+
+	def feedforward(self):
+	    # the only inputs are the query words
+	    for i in range(len(self.wordids)):
+	        self.ai[i] = 1.0
+	
+	    # hidden activations
+	    for j in range(len(self.hiddenids)):
+	        sum = 0.0
+	        for i in range(len(self.wordids)):
+	            sum = sum + self.ai[i] * self.wi[i][j]
+	        self.ah[j] = tanh(sum)
+	
+	    # output activations
+	    for k in range(len(self.urlids)):
+	        sum = 0.0
+	        for j in range(len(self.hiddenids)):
+	            sum = sum + self.ah[j] * self.wo[j][k]
+	        self.ao[k] = tanh(sum)
+	
+	    return self.ao[:]
+
+---
+
+建立神经网络，并调用feedforward函数针对一组单词与URL给出输出。
+
+	def getresult(self,wordids,urlids):
+	  self.setupnetwork(wordids,urlids)
+	  return self.feedforward()
+
+调用结果
+
+![](image/13.png)
+
+因为尚未经过任何训练，所以此处的神经网络对于每个URL给出的结果都是一样的。
+
 
 ### 利用反向传播进行训练 ###
 
+接着通过为神经网络提供某些人实际搜索的例子、相应的返回结果，以及用户决定点击的情况，对网络展开训练
+
+利用**反向传播**进行训练，因为该算法在调整权重值时是沿着网络反向进行的。
+
+训练算法来修改介于两节点间连接的权重值，以便更好地反映人们告知网络的正确答案。由于无法假设每个用户都会点击一个适合所有人的答案，因此权重值要逐步加以调整
+
+因为在对网络进行训练时,我们始终都知道每个输出层节点的期望输出，所以在这种情况下，如果用户点击了预期的结果，则它应该朝着1的方向推进，否则就朝0的方向推进。修改某一节点输出结果的唯一方法，是修改针对该节点的总输入。
+
+---
+
+训练算法需要知道tanh函数的在其当前输出级别上的斜率slop，(也就是对tanh函数求导)
+
+	def dtanh(y):
+	    return 1.0-y*y
+
+---
+
+在执行反向传播算法之前，有必要运行一下feedforward函数，这样一来，每个节点的当前输出结果都将被存入实例变量中。
+
+反向传播算法将执行如下步骤。
+
+对于输出层中的每个节点:
+
+1. 计算节点当前输出结果与期望结果之间的差距;
+
+2. 利用danh函数确定节点的总输入须要如何改变;
+
+3. 改变每个外部回指链接的强度值，其值与链接的当前强度及学习速率(learning rate)成定比例。
+
+对于每个隐藏层中的节点:
+
+1. 将每个输出链接(output link)的强度值乘以其目标节点所需的改变量，再累加求和，从而改变节点的输出结果
+
+2. 使用 doanh函数确定节点的总输入所需的改变量;
+
+3. 改变每个输入链接(input link)的强度值，其值与链接的当前强度及学习速率成一定比例。
+
+由于全部计算都依赖于对当前权重的了解，而非更新后权重的了解，该算法的实现逻辑实际上是预先对所有误差进行计算，然后再对权重加以调整。
+
+反向传播算法代码如下：
+
+	def backPropagate(self, targets, N=0.5):
+	    # calculate errors for output
+	    output_deltas = [0.0] * len(self.urlids)
+	    for k in range(len(self.urlids)):
+	        error = targets[k]-self.ao[k]
+	        output_deltas[k] = dtanh(self.ao[k]) * error
+	
+	    # calculate errors for hidden layer
+	    hidden_deltas = [0.0] * len(self.hiddenids)
+	    for j in range(len(self.hiddenids)):
+	        error = 0.0
+	        for k in range(len(self.urlids)):
+	            error = error + output_deltas[k]*self.wo[j][k]
+	        hidden_deltas[j] = dtanh(self.ah[j]) * error
+	
+	    # update output weights
+	    for j in range(len(self.hiddenids)):
+	        for k in range(len(self.urlids)):
+	            change = output_deltas[k]*self.ah[j]
+	            self.wo[j][k] = self.wo[j][k] + N*change
+	
+	    # update input weights
+	    for i in range(len(self.wordids)):
+	        for j in range(len(self.hiddenids)):
+	            change = hidden_deltas[j]*self.ai[i]
+	            self.wi[i][j] = self.wi[i][j] + N*change
+
+---
+
+训练时调用的函数
+
+	def trainquery(self,wordids,urlids,selectedurl): 
+	  # generate a hidden node if necessary
+	  self.generatehiddennode(wordids,urlids)
+	
+	  self.setupnetwork(wordids,urlids)      
+	  self.feedforward()
+	  targets=[0.0]*len(urlids)
+	  targets[urlids.index(selectedurl)]=1.0
+	  error = self.backPropagate(targets)
+	  self.updatedatabase()
+
+---
+
+更新数据库中的权重值
+
+	def updatedatabase(self):
+	  # set them to database values
+	  for i in range(len(self.wordids)):
+	      for j in range(len(self.hiddenids)):
+	          self.setstrength(self.wordids[i],self. hiddenids[j],0,self.wi[i][j])
+	  for j in range(len(self.hiddenids)):
+	      for k in range(len(self.urlids)):
+	          self.setstrength(self.hiddenids[j],self.urlids[k],1,self.wo[j][k])
+	  self.con.commit()
+
+
 ### 训练实验 ###
+
+![](image/14.png)
 
 ### 与搜索引擎结合 ###
 
+	import nn
+	mynet=nn.searchnet('nn.db')
+
+	def nnscore(self,rows,wordids):
+		# Get unique URL IDs as an ordered list
+		urlids = [urlid for urlid in dict([(row[0],1) for row in rows])]
+		nnres = mynet.getresult(wordids,urlids)
+		scores = dict([(urlids[i],nnres[i]) for i in range(len(urlids))])
+		return self.normalizescores(scores)
+
 ## 小结 ##
 
+所学到构建的搜索引擎，对于100,000规模的网页而言，性能应该绰绰有余，这对于**新闻站点**或**公司内部**而言，已经足够了。
 
+---
 
+搜索引擎的组成
 
+[搜索引擎构建源码](searchengine.py)
 
+1. 搜集文档
+	- 内部文件系统
+	- 网络爬虫
+	- ...
+2. 为上一步得到的文档建立索引
+3. 通过查询返回一个经过排序的文档的列表
 
+---
 
+对搜索结果进行排名的方法
 
+1. 基于内部排名
+	- 文档位置
+	- 单词距离
+	- 单词频度
+2. 利用外部回指链接
+	- 简单的引用次数统计
+	- PageRank算法
+	- 利用链接文本（其中有使用到PageRank算法）
+	- 从点击行为中学习（其中用到神经网络）
 
+---
 
+构建神经网络使用的函数
 
+[neural network构建源码](nn.py)
 
+函数名|描述
+---|---
+maketables()|创建数据库表
+getstrength()|判断当前连接强度
+setstrength()|判断连接是否已存在，并利用新的强度更新连接或创建连接。
+generatehiddennode()|在隐藏层中建立一个新的节点。
+getallhiddenids()|得出所有隐藏层节点的id
+setupnetwork()|建立神经网络
+feedforward()|算法接受一列输入，将其推入网络，然后返回所有输出层节点的输出结果。
+getresult()|建立神经网络，输出评分数值（setupnetwork()和feedforward()结合）
+backPropagate()|使用**反向传播算法**来修改介于两节点间连接的权重值，以便更好地反映人们告知网络的正确答案。由于无法假设每个用户都会点击一个适合所有人的答案，因此权重值要逐步加以调整。
+trainquery()|训练神经网络所调用的函数
+updatedatabase()|更新数据库中的权重值
 
