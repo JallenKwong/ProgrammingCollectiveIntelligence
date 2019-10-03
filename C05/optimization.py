@@ -105,6 +105,7 @@ def hillclimb(domain,costf):
     current=costf(sol)
     best=current
     for j in range(len(neighbors)):
+      #print str(neighbors[j])
       cost=costf(neighbors[j])
       if cost<best:
         best=cost
@@ -174,7 +175,7 @@ def geneticoptimize(domain,costf,popsize=50,step=1,
   
   # Main loop 
   for i in range(maxiter):
-    scores=[(costf(v),v) for v in pop]
+    scores=[(costf(v),v) for v in pop if v is not None]
     scores.sort()
     ranked=[v for (s,v) in scores]
     
