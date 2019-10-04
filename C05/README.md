@@ -2,6 +2,49 @@
 
 Optimization
 
+[1.组团旅游](#组团旅游)
+
+[2.描述题解](#描述题解)
+
+[3.成本函数](#成本函数)
+
+[4.随机搜索](#随机搜索)
+
+[5.爬山法](#爬山法)
+
+[6.模拟退火算法](#模拟退火算法)
+
+[7.遗传算法](#遗传算法)
+
+[8.真实的航班搜索](#真实的航班搜索)
+
+[8.1.Kayak API](#kayak-api)
+
+[8.2.minidom包](#minidom包)
+
+[8.3.航班搜索](#航班搜索)
+
+[9.涉及偏好的优化](#涉及偏好的优化)
+
+[9.1.学生宿舍优化问题](#学生宿舍优化问题)
+
+[9.2.学生宿舍成本函数](#学生宿舍成本函数)
+
+[9.3.执行优化函数](#执行优化函数)
+
+[10.网络可视化](#网络可视化)
+
+[10.1.布局问题](#布局问题)
+
+[10.2.计算交叉线](#计算交叉线)
+
+[10.3.绘制网格](#绘制网格)
+
+[11.其他可能的应用场景](#其他可能的应用场景)
+
+[12.小结](#小结)
+
+
 本文教授一系列被称为随机优化stochastic optimization的技术来解决协作类问题。
 
 **优化技术特别擅长于处理**：受多种变量的影响，存在许多可能解的问题，以及结果因这些变量的组合而产生很大变化的问题。
@@ -677,26 +720,325 @@ minidom包类似BeautifulSoup，是标准Python发布包的一部分。
 
 ## 涉及偏好的优化 ##
 
+**请记住**，利用优化算法解决问题的基本要求是：问题本身有一个定义好的成本函数，并且相似的解会产生相似的结果。
+
+本节的问题的一般描述：如何将有限的资源分配给多个表达了偏好的人，并尽可能使他们都满意。
+
+
 ### 学生宿舍优化问题 ###
+
+本节中的示例问题是，依据学生的首选和次选，为其分配宿舍。
+
+将这种情况可以轻易地推广到其他问题：
+
+1. 在线纸牌游戏中玩家的牌桌分配；
+2. 大型编程项目中开发人员的bug分配；
+3. 家庭成员中的家务分配。
+
+须要再次说明的是，这类问题的**目的**是**为了从个体中提取信息，并将其组合起来产生出优化的结果**。
+
+---
+
+数据结构
+
+	import random
+	import math
+	
+	# The dorms, each of which has two available spaces
+	dorms=['Zeus','Athena','Hercules','Bacchus','Pluto']
+	
+	# People, along with their first and second choices
+	prefs=[('Toby', ('Bacchus', 'Hercules')),
+	       ('Steve', ('Zeus', 'Pluto')),
+	       ('Karen', ('Athena', 'Zeus')),
+	       ('Sarah', ('Zeus', 'Pluto')),
+	       ('Dave', ('Athena', 'Bacchus')), 
+	       ('Jeff', ('Hercules', 'Pluto')), 
+	       ('Fred', ('Pluto', 'Athena')), 
+	       ('Suzie', ('Bacchus', 'Hercules')), 
+	       ('Laura', ('Bacchus', 'Hercules')), 
+	       ('James', ('Hercules', 'Athena'))]
+
+---
+
+出现的问题是每个人都不可能满足各自的首选，因为一个房间有三个想要住进去的人。需要将这些人中的任何一位安置于其次选宿舍中。
+
+在真实生活中，问题也许会涉及成百上千名学生在更大数量的宿舍范围内竞争更多的住所。因为这个例子仅有大约100000个可能的解，所以将所有解都尝试一遍并从中找到最优解是可能的。但是当每间宿舍有4个隔间时，这一数字会快速增长到上万亿。
+
+解决这一问题的一种办法是让成本函数返回一个很高的数值，用以代表无效解，但是这将使优化算法很难找到次优的解(better solutions)，因为算法无法确定返回结果是否接近于其他优解(good solutions)，甚或是有效的解。一般而言，最好不要让处理器的时钟周期浪费在无效解的搜索上。
+
+---
+
+解决这一问题的更好办法是寻找一种能让每个解都有效的题解表示法。有效解未必是优解；它仅代表恰有两名学生被安置于每间宿舍内。要达到这一目的，一种办法是设想每间宿舍都有两个“槽”，如此，在本例中共计有10个槽。将每名学生依序安置于各空槽内第一位可置于10个槽中的任何一个内，第二位则可置于剩余9个槽中的任何一个内，依次类推。
+
+	# [(0,9),(0,8),(0,7),(0,6),...,(0,0)]
+	domain=[(0,(len(dorms)*2)-i-1) for i in range(0,len(dorms)*2)]
+
+---
+
+打印题解
+
+	>>> import dorm
+	>>> [0]*10
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	>>> dorm.printsolution([0]*10)
+	Toby Zeus
+	Steve Zeus
+	Karen Athena
+	Sarah Athena
+	Dave Hercules
+	Jeff Hercules
+	Fred Bacchus
+	Suzie Bacchus
+	Laura Pluto
+	James Pluto
+	>>> 
 
 
 ### 学生宿舍成本函数 ###
 
+	def dormcost(vec):
+	  cost=0
+	  # Create list a of slots
+	  # 元素数值代表宿舍号
+	  slots=[0,0,1,1,2,2,3,3,4,4]
+	
+	  # Loop over each student
+	  for i in range(len(vec)):
+	    x=int(vec[i])
+	    dorm=dorms[slots[x]]
+	    pref=prefs[i][1]
+	    # First choice costs 0, second choice costs 1
+	    if pref[0]==dorm: cost+=0
+	    elif pref[1]==dorm: cost+=1
+	    else: cost+=3
+	    # Not on the list costs 3
+	
+	    # Remove selected slot
+	    del slots[x]
+	    
+	  return cost
+
+优化目标是近可能寻找成本为0的最优解。
+
+本例中明确确定不存在为0的最优解，却可以了解目前与最优解的差距有多少。
+
+这做法另一好处是，当优化算法找到一个最优解，可以让优化算法停止搜寻更优的解。
 
 ### 执行优化函数 ###
 
 
+	>>> import optimization
+	>>> s=optimization.randomoptimize(dorm.domain, dorm.dormcost)
+	>>> dorm.dormcost(s)
+	21
+	>>> optimization.geneticoptimize(dorm.domain, dorm.dormcost)
+	11
+	9
+	...
+	4
+	4
+	4
+	4
+	[4, 0, 1, 0, 0, 0, 2, 0, 0, 0]
+	>>> dorm.printsolution(s)
+	Toby Zeus
+	Steve Zeus
+	Karen Hercules
+	Sarah Bacchus
+	Dave Athena
+	Jeff Athena
+	Fred Bacchus
+	Suzie Pluto
+	Laura Pluto
+	James Hercules
+	>>> 
+
+
 ## 网络可视化 ##
+
+此处的网络，意指任何彼此相连的一组事物。
+
+像微博、微信或QQ这样的社会网络便是在线应用领域中的一个极好的例子。
+
+在那里，人们因互为朋友或具备特定关系而彼此相连。网站的每一位成员可以选择与他们相连的其他成员，共同构筑一个人际关系网络。
+
+将这样的网络可视化输出，以明确人们彼此间的关系结构，例如寻找联络人(那些认识许多其他朋友的人，或是联系其他私人小圈子的人)。
 
 ### 布局问题 ###
 
+![](image/08.png)
+
+上图的问题是多条线段相交，盘根错节，会使布局非常地混乱不堪。
+
+![](image/09.png)
+
+本节考虑如何运用优化算法来构建更好的非杂乱无章的网络图。
+
+---
+
+数据结构
+
+	import math
+	
+	people=['Charlie','Augustus','Veruca','Violet','Mike','Joe','Willy','Miranda']
+	
+	links=[('Augustus', 'Willy'), 
+	       ('Mike', 'Joe'), 
+	       ('Miranda', 'Mike'), 
+	       ('Violet', 'Augustus'), 
+	       ('Miranda', 'Willy'), 
+	       ('Charlie', 'Mike'), 
+	       ('Veruca', 'Joe'), 
+	       ('Miranda', 'Augustus'), 
+	       ('Willy', 'Augustus'), 
+	       ('Joe', 'Charlie'), 
+	       ('Veruca', 'Augustus'), 
+	       ('Miranda', 'Joe')]
+
+目标是要建立一个程序，令其能够读取一组有关于谁是谁的朋友的事实数据，并生成一个易于理解的网络图。
+
+要完成这项工作，通常须要借助于**质点弹簣算法mass-and- spring algorithm**。这一算法是从物理学中建模而来的：各结点彼此向对方施以推力并试图分离，而结点间的连接则试图将关联结点彼此拉近。如此一来，网络便会逐渐呈现出这样一个布局：未关联的结点被推离，而关联的结点则被彼此拉近一却又不会靠得很拢。
+
+>TC. 这算法该叫成刺猬报团取暖算法。
+
+
+遗憾的是，质点弹簧算法无法避免交叉线。这使得很难在一个拥有大量连接的网络中观察结点的关联情况，因为追踪彼此交叉的连线是颇具难度的。不过，假如使用优化算法来构建布局的话，那么只需确定一个成本函数，并尝试令它的返回值尽可能地小。
+
+本例中，成本函数是计算彼此交叉的连接数。
+
 ### 计算交叉线 ###
+
+一个人用(x,y)坐标表示
+
+将所有坐标放入列表
+
+	sol=[120, 200, 250, 125...
+
+---
+
+
+	def crosscount(v):
+	  # Convert the number list into a dictionary of person:(x,y)
+	  loc=dict([(people[i],(v[i*2],v[i*2+1])) for i in range(0,len(people))])
+	  total=0
+	  
+	  # Loop through every pair of links
+	  for i in range(len(links)):
+	    for j in range(i+1,len(links)):
+	
+	      # Get the locations 
+	      (x1,y1),(x2,y2)=loc[links[i][0]],loc[links[i][1]]
+	      (x3,y3),(x4,y4)=loc[links[j][0]],loc[links[j][1]]
+	      
+	      den=(y4-y3)*(x2-x1)-(x4-x3)*(y2-y1)
+	
+	      # den==0 if the lines are parallel
+	      if den==0: continue
+	
+	      # Otherwise ua and ub are the fraction of the
+	      # line where they cross
+	      ua=((x4-x3)*(y1-y3)-(y4-y3)*(x1-x3))/den
+	      ub=((x2-x1)*(y1-y3)-(y2-y1)*(x1-x3))/den
+	      
+	      # If the fraction is between 0 and 1 for both lines
+	      # then they cross each other
+	      if ua>0 and ua<1 and ub>0 and ub<1:
+	        total+=1
+
+	    # 两节点不能靠得太近
+	    for i in range(len(people)):
+	      for j in range(i+1,len(people)):
+	        # Get the locations of the two nodes
+	        (x1,y1),(x2,y2)=loc[people[i]],loc[people[j]]
+	
+	        # Find the distance between them
+	        dist=math.sqrt(math.pow(x1-x2,2)+math.pow(y1-y2,2))
+	        # Penalize any nodes closer than 50 pixels
+	        if dist<50:
+	          total+=(1.0-(dist/50.0))
+	        
+	  return total
+
+上述算法定义域就是每组坐标的域值范围，假设将节点绘制于400*400的像素图中，定义域可以小于该范围值。
+
+	domain=[(10,370)]*(len(people)*2)
+
+---
+
+	>>> import socialnetwork
+	>>> sol=optimization.randomoptimize(socialnetwork.domain,socialnetwork.crosscount)
+	>>> socialnetwork.crosscount(sol)
+	12.800000000000004
+	>>> sol=optimization.annealingoptimize(socialnetwork.domain,socialnetwork.crosscount,step=50,cool=0.99)
+	>>> socialnetwork.crosscount(sol)
+	2
+	>>> sol
+	[133, 211.0, 370, 365, 13, 344, 370, 10, 26, 117, 370, 236, 32, 244.0, 185, 266]
+	>>> 
 
 ### 绘制网格 ###
 
+使用PIL库，绘制上述坐标点，让人物关系清楚明了。
+
+	from PIL import Image,ImageDraw
+
+	def drawnetwork(sol):
+	  # Create the image
+	  img=Image.new('RGB',(400,400),(255,255,255))
+	  draw=ImageDraw.Draw(img)
+	
+	  # Create the position dict
+	  pos=dict([(people[i],(sol[i*2],sol[i*2+1])) for i in range(0,len(people))])
+
+	  # 绘制连线
+	  for (a,b) in links:
+	    draw.line((pos[a],pos[b]),fill=(255,0,0))
+
+	  # 绘制代表人的节点
+	  for n,p in pos.items():
+	    draw.text(p,n,(0,0,0))
+	
+	  img.show()
+
+---
+
+	>>> sol
+	[133, 211.0, 370, 365, 13, 344, 370, 10, 26, 117, 370, 236, 32, 244.0, 185, 266]
+	>>> socialnetwork.drawnetwork(sol)
+	>>> 
+
+![](image/10.png)
+
+
 ## 其他可能的应用场景 ##
+
+本章一再重申的，**关键步骤在于确定题解的表示法及成本函数**。如果能做到这些，那么就有机会利用优化算法来对问题进行求解。
+
+---
+
+知识问答竞赛小组人员分配
+
+关于优化，有这样一项应用也许是值得关注的：或许我们会希望对一群人进行分组，让组员的技能得以均匀分布。在一个小型的竞赛活动中，我们可能希望将参赛者进行组队，使每个队都能在体育、历史、文学，以及电视方面具备足够的知识。另一种可能的应用场合是根据人们的技能搭配情况，为项目组分派任务。优化算法可以找到任务分解的最佳方案，从而使任务列表得以在最短时间内完成。
 
 
 ## 小结 ##
+
+**优化问题关键步骤在于确定题解的表示法及成本函数。**
+
+优化算法：
+
+1. 随机搜索；
+2. 爬山法；
+3. 模拟退火算法；
+4. 遗传算法。
+
+---
+
+本章例子：
+
+1. 家庭聚会人员航班安排；
+2. 个人偏好的优化——住宿人员安排；
+3. 网络可视化——社交网络。
 
 

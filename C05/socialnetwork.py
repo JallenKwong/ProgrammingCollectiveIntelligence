@@ -55,6 +55,7 @@ def crosscount(v):
           total+=(1.0-(dist/50.0))
         
   return total
+
 from PIL import Image,ImageDraw
 
 def drawnetwork(sol):
