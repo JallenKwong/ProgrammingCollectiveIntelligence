@@ -209,6 +209,9 @@ getwords()用以提取特征，用不重复的单词作为特征。
 
 上述概率为**条件概率**，通常记为Pr(A|B)，读作“在给定B的条件下A的概率”
 
+
+![](image/04.png)
+
 ---
 
 运行结果
@@ -272,10 +275,129 @@ getwords()用以提取特征，用不重复的单词作为特征。
 
 **不管怎样，对于一个过滤器而言，它最好应该有能力处理极少会出现。**
 
+## 朴素贝叶斯分类器 ##
 
-## 朴素分类器 ##
+一旦求出了指定单词在一篇属于某个分类的文档中出现的概率，就需要有一种方法将各个单词的概率进行组合，从而得出整篇文档属于该分类的概率。
+
+这分类器被称为**朴素贝叶斯分类器**。
+
+这种方法之所以被冠以**朴素**二字，是因为它假设将要被组合的**各个概率是彼此独立的**。即，一个单词在属于某个指定分类的文档中出现的概率，与其他单词出现于该分类的概率是不相关的。**事实上**这个假设是不成立的，因为你也许会发现，与有关 Python编程的文档相比，包含单词“ casino”的文档更有可能包含单词“money”。
+
+这意味着，我们无法将采用朴素贝叶斯分类器所求得的结果实际用作一篇文档属于某个分类的概率，**因为这种独立性的假设会使其得到错误的结果**。不过，我们还是可以对各个分类的**计算结果进行比**较，然后再看哪个分类的概率最大。在现实中，若不考虑假设的潜在缺陷，朴素贝叶斯分类器将被证明是一种非常有效的文档分类方法。
+
+### 整篇文档的概率 ###
+
+**为了使用朴素贝叶斯分类器**，首先我们须要确定整篇文档属于给定分类的概率。须要假设概率的彼此独立性，即:可以通过将所有的概率相乘，计算出总的概率值。
+
+例如，假设有20%的"bad”类文档中出现了单词“ Python——Pr(Python|Bad)=0.2——同时有80%的文档出现了单词“casino”(Pr(Casino |Bad)=0.8)。那么，预期两个单词出现于同一篇“bad”类文档中的独立概率为Pr( Python&Casino |Bad)=0.8×0.2=0.16。从中我们会发现，计算整篇文档的概率，只须将所有出现与某篇文档中的各单词的概率相乘即可。
+
+docprob()函数来完成这任务：
+
+	class naivebayes(classifier):
+		  
+		def docprob(self,item,cat):
+		    features=self.getfeatures(item)   
+		
+		    # Multiply the probabilities of all the features together
+		    p=1
+		    for f in features: p*=self.weightedprob(f,cat,self.fprob)
+		    return p
+
+知道计算Pr(Document|Category)，不过只做到这一步还不行。为了这文档进行分类，真正需要Pr(Category|Document)。这里需要用到**贝叶斯定理**。
+
+### 贝叶斯定理 ###
+
+它是一种对条件概率进行调换求解（flipping around）的方法。
+
+通常写作：
+
+	Pr(A|B)=Pr(B|A)*Pr(A)/Pr(B)
+
+对于上面的例子为：
+
+	Pr(Category|Document)=Pr(Document|Category)*Pr(Category)/Pr(Document)
+
+Pr(Category)是随机选择一篇文档属于该分类的概率，因此就是（属于该分类的文档数）除以（文档的总数）。
+
+Pr(Document)没必要计算。这是因为我们不要准确的概率值，而是分别计算每个分类的概率，然后对所有的计算结果进行比较大小，比较过程中Pr(Document)值都一样，可忽略掉。
+
+prob()函数用于计算分类的概率，并返回Pr(Document|Category)与Pr(Category)乘积。
+
+	def prob(self,item,cat):
+	    catprob=self.catcount(cat)/self.totalcount()
+	    docprob=self.docprob(item,cat)
+	    return docprob*catprob
+
+运行结果
+
+![](image/05.png)
+
+根据训练的数据，认为相比与“bad”分类，短语“quick rabbit”更适合与“good”分类。
+
+### 选择分类 ###
+
+**构造朴素贝叶斯分类器的最后一个步骤是实际判定某个内容项所属的分类**。此处最简单的方法，是计算被考查内容在每个不同分类中的概率，然后选择概率最大的分类。
+
+如果我们只是在试图判断“将内容放到哪里最合适”的问题，那么这不失为一种可行的策略，**但是**，在许多应用中，**我们无法将各个分类同等看待**，而且在一些应用中，对于分类器而言，承认不知道答案，要好过判断答案就是概率值稍大一些的分类。
+
+>TC.有时，无知是福。
+
+在垃圾信息过滤的例子中，避免将普通邮件错当成垃圾邮件要比截获每一封垃圾邮件更为重要。收件箱中偶尔收到几封垃圾邮件还是可以容忍的，但是一封重要的邮件则有可能会因为自动过滤到废件箱而被完全忽视。**假如我们必须在废件箱中找回自己的重要邮件，那就真的没必要再使用垃圾信息过滤器了。**
+
+>TC.垃圾信息过滤器把重要邮件分类成垃圾，这过滤器不用算了。
+
+为了解决这一问题，我们可以为每个分类定义一个**最小阈值**。对于一封将要被划归到某个分类的新邮件而言，其概率与针对所有其他分类的概率相比，必须大于某个指定的数值才行。这一指定的数值就是阈值。
+
+以垃圾邮件过滤为例，假如过滤到“bad”分类的阈值为3，则**针对“bad”分类的概率就必须至少3倍于针对“good”分类的概率才行**。
+
+假如针对“good分类的阈值为1，则对于任何邮件，只要概率确实大于针对“bad”分类的概率，它就是属于“good”分类的。任何更有可能属于“bad”分类，但概率并没有超过3倍以上的邮件，都将被划归到“未知”分类中。
+
+
+	def __init__(self,getfeatures):
+	    classifier.__init__(self,getfeatures)
+		#定义阈值
+	    self.thresholds={}
+
+	#设置阈值
+	def setthreshold(self,cat,t):
+	    self.thresholds[cat]=t
+	
+	#获得阈值
+	def getthreshold(self,cat):
+	    if cat not in self.thresholds: return 1.0
+	    return self.thresholds[cat]
+
+分类方法
+
+	def classify(self,item,default=None):
+	    probs={}
+		#寻找概率最大的分类
+	    # Find the category with the highest probability
+	    max=0.0
+	    for cat in self.categories():
+	      probs[cat]=self.prob(item,cat)
+	      if probs[cat]>max: 
+	        max=probs[cat]
+	        best=cat
+
+		#确保概率值超出阈值*次大概率值
+	    # Make sure the probability exceeds threshold*next best
+	    for cat in probs:
+	      if cat==best: continue
+	      if probs[cat]*self.getthreshold(best)>probs[best]: return default
+	    return best
+
+现在运行一个较完整的文档分类系统。
+
+![](image/06.png)
+
+若当前阈值令太多的垃圾邮件进入到收件箱中，或者有大量正常邮件被错归为垃圾邮件，可对阈值进行调整。
 
 ## 费舍尔方法 ##
+
+
+
+
 
 ## 将经过训练的分类器持久化 ##
 
