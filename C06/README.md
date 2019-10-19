@@ -466,6 +466,9 @@ prob()函数用于计算分类的概率，并返回Pr(Document|Category)与Pr(Ca
 - cprob=clf/(clf+nclf)
 
 
+---
+
+
 	class fisherclassifier(classifier):
 	    def cprob(self,f,cat):
 		    # The frequency of this feature in this category
@@ -783,3 +786,4 @@ Akismet允许人们向其报告提交到各自博客上的垃圾评论，并与�
 1. 朴素贝叶斯
 2. 费舍尔方法
 
+监督型学习方法supervised learning methods，一种利用正确结果接受训练并逐步作出更准预测的方法。通过将特征作为输入，并令输出代表每一种可能的分类。
