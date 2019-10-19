@@ -727,6 +727,8 @@ minidom包类似BeautifulSoup，是标准Python发布包的一部分。
 
 ### 学生宿舍优化问题 ###
 
+[dorm.py源码](dorm.py)
+
 本节中的示例问题是，依据学生的首选和次选，为其分配宿舍。
 
 将这种情况可以轻易地推广到其他问题：
@@ -856,6 +858,8 @@ minidom包类似BeautifulSoup，是标准Python发布包的一部分。
 
 
 ## 网络可视化 ##
+
+[socialnetwork.py源码](socialnetwork.py)
 
 此处的网络，意指任何彼此相连的一组事物。
 

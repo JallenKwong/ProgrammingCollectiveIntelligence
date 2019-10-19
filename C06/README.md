@@ -1,5 +1,45 @@
 # 文档过滤 #
 
+[1.过滤垃圾信息](#过滤垃圾信息)
+
+[2.文档和单词](#文档和单词)
+
+[3.对分类器进行训练](#对分类器进行训练)
+
+[4.计算概率](#计算概率)
+
+[4.1.从一个合理的推测开始](#从一个合理的推测开始)
+
+[5.朴素贝叶斯分类器](#朴素贝叶斯分类器)
+
+[5.1.整篇文档的概率](#整篇文档的概率)
+
+[5.2.贝叶斯定理](#贝叶斯定理)
+
+[5.3.选择分类](#选择分类)
+
+[6.费舍尔方法](#费舍尔方法)
+
+[6.1.针对特征的分类概率](#针对特征的分类概率)
+
+[6.2.将各概率值组合起来](#将各概率值组合起来)
+
+[6.3.对内容项进行分类](#对内容项进行分类)
+
+[7.将经过训练的分类器持久化](#将经过训练的分类器持久化)
+
+[7.1.使用SQLite](#使用sqlite)
+
+[8.过滤博客订阅源](#过滤博客订阅源)
+
+[9.对特征检测的改进](#对特征检测的改进)
+
+[10.使用Akismet](#使用akismet)
+
+[11.替代方法](#替代方法)
+
+[12.小结](#小结)
+
 **文档分类**是机器智能（machine intelligence）的一个很有实用价值的应用。
 
 **文档过滤**也是。最熟悉的文档过滤应用有**垃圾邮件过滤**、**垃圾网贴过滤**。
@@ -395,18 +435,351 @@ prob()函数用于计算分类的概率，并返回Pr(Document|Category)与Pr(Ca
 
 ## 费舍尔方法 ##
 
+介绍的朴素贝叶斯方法的一种替代方案。
+
+与朴素贝叶斯过滤器利用特征概率来计算整篇文档的概率不同，费舍尔方法为**文档中的每个特征都求得了分类的概率**，然后又将这些概率组合起来，并判断其是否可能构成一个随机集合。该方法还会返回每个分类的概率，这些概率彼此间可以进行比较。
+
+尽管这种方法更为复杂，但是因为它在为分类选择临界值（cutoff）时允许更大的灵活性，所以还是值得一学的。
+
+### 针对特征的分类概率 ###
+
+朴素贝叶斯过滤器，将所有Pr(feature|category)的计算结果组合起来得到了整篇文档的概率，然后再对其进行调换求解。
+
+本节中，**将直接计算**当一篇文档中出现某个特征时，该文档属于某个分类的可能性，也就是Pr(catefory|feature)。
+
+例如，单词“casino”出现500篇文档中，并且其中有499篇属于“bad”分类，则“casino”属于“bad”分类的概率将非常接近于1
+
+计算Pr(catefory|feature)的常见方法是：
+
+	（具有指定特征的属于某分类的文档数）/（具有指定特征的文档总数）
+
+上述计算公式**并没有**考虑我们收到属于某一分类的文档可能比其他分类更多的情况。假如我们有许多“good”分类的文档，而“bad”分类的文档则很少，那么一个出现于所有“bad”类文档中的单词，即便邮件内容**看上去可能没有问题**，该单词属于“bad”分类的概率也依然会更大一些。
+
+如果我们假设“**未来将会收到的文档在各个分类中的数量是相当的**”，那么上述方法就会有更好的表现，因为这使得它们能更有效地利用特征来识别分类。
+
+---
+
+**为了进行归一化计算**，函数将分别求得3个量：
+
+- 属于某分类的概率clf=Pr(feature|category)
+- 属于所有分类的概率freqsum=Pr(feature|category)之和
+- cprob=clf/(clf+nclf)
 
 
+	class fisherclassifier(classifier):
+	    def cprob(self,f,cat):
+		    # The frequency of this feature in this category
+			# 特征在该分类中出现的频率
+		    clf=self.fprob(f,cat)
+		    if clf==0: return 0
+		
+		    # The frequency of this feature in all the categories
+			# 特征在所有分类中出现的频率
+		    freqsum=sum([self.fprob(f,c) for c in self.categories()])
+		
+		    # The probability is the frequency in this category divided by
+		    # the overall frequency
+			# 概率等于特征在该分类中出现的频率除以总体频率
+		    p=clf/(freqsum)
+		    
+		    return p
 
+运行结果
+
+![](image/07.png)
+
+刚开始接触单词的次数过少，所以它有可能会对概率值估计过高。因此可对概率进行加权处理。
+
+![](image/08.png)
+
+### 将各概率值组合起来 ###
+
+现在，我们须要将对应各个特征的概率值组合起来，形成一个总的概率值。
+
+理论上，我们可以将它们连乘起来，利用相乘的结果在不同分类间进行比较。
+
+当然，**由于特征不是彼此独立的，因此它们并不代表真实的概率，不过这已经比我们在前一节中构造的贝叶斯分类器要好不少了**。
+
+由费含尔方法返回的结果是对概率的一种更好的估计，这对于结果报告或临界值判断而言是非常有价值的。
+
+---
+
+费舍尔方法的计算过程
+
+	def fisherprob(self,item,cat):
+	    # Multiply all the probabilities together
+		# 将所有概率值相乘
+	    p=1
+	    features=self.getfeatures(item)
+	    for f in features:
+	      p*=(self.weightedprob(f,cat,self.cprob))
+	
+	    # Take the natural log and multiply by -2
+		# 取自然对数，并乘以-2
+	    fscore=-2*math.log(p)
+	
+	    # Use the inverse chi2 function to get a probability
+		# 倒置对数卡方函数求得概率
+	    return self.invchi2(fscore,len(features)*2)
+	
+	# 倒置对数卡方函数
+	def invchi2(self,chi, df):
+	    m = chi / 2.0
+	    sum = term = math.exp(-m)
+	    for i in range(1, df//2):
+	        term *= m / i
+	        sum += term
+	    return min(sum, 1.0)
+
+费舍尔方法告诉我们，如果概率彼此独立且随机分布，则这一计算结果将满足对数卡方分布( chi-squared distribution)。
+
+也许我们会预料到，不属于某个分类的内容项中，可能会包含针对该分类的不同特征概率的单词(可能会随机出现)；
+
+或者，一个属于该分类的内容项中会包含许多概率值很高的特征。
+
+通过将费舍尔方法的计算结果传给倒置对数卡方函数，我们会得到一组随机概率中的最大值。
+
+![](image/09.png)
+
+### 对内容项进行分类 ###
+
+我们可以利用 fisherprob的返回值来决定如何进行分类。
+
+**不像贝叶斯过滤器那样须要乘以阈值，此处我们可以为每个分类指定下限**。
+
+尔后，分类器会返回介于指定范围内的最大值在垃圾信息过滤器中，我们可以将“bad”分类的下限值设得很高，比如0.6，将“god分类的下限值设置得很低，比如0.2。
+
+这样做可以将正常邮件被错归到“bad”分类的可能性减到最小，同时也会允许少量垃圾邮件进入到收件箱中。任何针对“good”分类的分值低于0.2，针对“bad”分类的分值低于0.6的邮件，都将被划归到“未知”分类中。
+
+	  def __init__(self,getfeatures):
+	    classifier.__init__(self,getfeatures)
+	    self.minimums={}
+	
+	  def setminimum(self,cat,min):
+	    self.minimums[cat]=min
+	  
+	  def getminimum(self,cat):
+	    if cat not in self.minimums: return 0
+	    return self.minimums[cat]
+
+	  def classify(self,item,default=None):
+	    # Loop through looking for the best result
+	    best=default
+	    max=0.0
+	    for c in self.categories():
+	      p=self.fisherprob(item,c)
+	      # Make sure it exceeds its minimum
+	      if p>self.getminimum(c) and p>max:
+	        best=c
+	        max=p
+	    return best
+
+运行结果
+
+![](image/10.png)
+
+此处的执行结果与朴素贝叶斯分类器的结果类似。
+
+人们相信，在实践中费舍尔分类器对垃圾信息的过滤效果会更好；只不过对于这样一小组训练数据而言，过滤的效果可能不太明显。
+
+应该使用何种分类器要取决于你的应用，没有一种简单方法可以预出什么样的分类器会更好，或者我们应该使用多大的临界值。
+
+所幸的是，利用此处给出的代码，我们应该能够很容易地对两种算法以及各种不同的设置项进行试验。
 
 ## 将经过训练的分类器持久化 ##
 
+### 使用SQLite ###
+
+	from pysqlite2 import dbapi2 as sqlite
+
+修改先前的代码
+
+	  def setdb(self,dbfile):
+	    self.con=sqlite.connect(dbfile)    
+	    self.con.execute('create table if not exists fc(feature,category,count)')
+	    self.con.execute('create table if not exists cc(category,count)')
+	
+	
+	  def incf(self,f,cat):
+	    count=self.fcount(f,cat)
+	    if count==0:
+	      self.con.execute("insert into fc values ('%s','%s',1)" 
+	                       % (f,cat))
+	    else:
+	      self.con.execute(
+	        "update fc set count=%d where feature='%s' and category='%s'" 
+	        % (count+1,f,cat)) 
+	  
+	  def fcount(self,f,cat):
+	    res=self.con.execute(
+	      'select count from fc where feature="%s" and category="%s"'
+	      %(f,cat)).fetchone()
+	    if res==None: return 0
+	    else: return float(res[0])
+	
+	  def incc(self,cat):
+	    count=self.catcount(cat)
+	    if count==0:
+	      self.con.execute("insert into cc values ('%s',1)" % (cat))
+	    else:
+	      self.con.execute("update cc set count=%d where category='%s'" 
+	                       % (count+1,cat))    
+	
+	  def catcount(self,cat):
+	    res=self.con.execute('select count from cc where category="%s"'
+	                         %(cat)).fetchone()
+	    if res==None: return 0
+	    else: return float(res[0])
+	
+	  def categories(self):
+	    cur=self.con.execute('select category from cc');
+	    return [d[0] for d in cur]
+	
+	  def totalcount(self):
+	    res=self.con.execute('select sum(count) from cc').fetchone();
+	    if res==None: return 0
+	    return res[0]
+
+在train方法后添加
+
+	    self.con.commit()
+
+运行结果
+
+![](image/11.png)
+
 ## 过滤博客订阅源 ##
+
+[feedfilter.py源码](feedfilter.py)
+
+对一个RSS订阅源中的内容项进行分类
+
+	import feedparser
+	import re
+	
+	# Takes a filename of URL of a blog feed and classifies the entries
+	def read(feed,classifier):
+	  # Get feed entries and loop over them
+	  f=feedparser.parse(feed)
+	  for entry in f['entries']:
+	    print
+	    print '-----'
+	    # Print the contents of the entry
+	    print 'Title:     '+entry['title'].encode('utf-8')
+	    print 'Publisher: '+entry['publisher'].encode('utf-8')
+	    print
+	    print entry['summary'].encode('utf-8')
+	    
+	
+	    # Combine all the text to create one item for the classifier
+	    fulltext='%s\n%s\n%s' % (entry['title'],entry['publisher'],entry['summary'])
+	
+	    # Print the best guess at the current category
+	    print 'Guess: '+str(classifier.classify(entry))
+	
+	    # Ask the user to specify the correct category and train on that
+	    cl=raw_input('Enter category: ')
+	    classifier.train(entry,cl)
+
+运行例子
+
+![](image/12.png)
+
+![](image/13.png)
 
 ## 对特征检测的改进 ##
 
+有几种方法进行对特征检测的改进
+
+- 不真正区分大写和小写的单词，而是将“含有许多大写单词”这样的现象作为一种特征。
+
+- 除了单个单词以外，还可以使用词组。
+
+- 捕获更多的元信息，如:是谁发送了电子邮件，或者一篇博客被提交到了哪个分类下，可以将这样的信息标示为元信息。
+
+- 保持URL和数字原封不动，不对其进行拆分。
+
+对订阅源提取特征函数
+
+	def entryfeatures(entry):
+	  splitter=re.compile('\\W*')
+	  f={}
+	  
+	  # Extract the title words and annotate
+	  # 提取标题中的单词并进行标示
+	  titlewords=[s.lower() for s in splitter.split(entry['title']) 
+	          if len(s)>2 and len(s)<20]
+	  for w in titlewords: f['Title:'+w]=1
+	  
+	  # Extract the summary words
+	  # 提取摘要中的单词
+	  summarywords=[s.lower() for s in splitter.split(entry['summary']) 
+	          if len(s)>2 and len(s)<20]
+	
+	  # Count uppercase words
+	  # 统计大写单词
+	  uc=0
+	  for i in range(len(summarywords)):
+	    w=summarywords[i]
+	    f[w]=1
+	    if w.isupper(): uc+=1
+	    
+	    # Get word pairs in summary as features
+		# 将从摘要中获得的词组作为特征
+	    if i<len(summarywords)-1:
+	      twowords=' '.join(summarywords[i:i+1])
+	      f[twowords]=1
+	    
+	  # Keep creator and publisher whole
+	  # 保持文章创建者和发布者名字的完整性
+	  f['Publisher:'+entry['publisher']]=1
+	
+	  # UPPERCASE is a virtual word flagging too much shouting  
+	  # UPPERCASE是一个“虚拟”单词，用以指示存在过多的大写内容
+	  if float(uc)/len(summarywords)>0.3: f['UPPERCASE']=1
+	  
+	  return f
+
+设置这个特征提取函数
+
+![](image/14.png)
+
 ## 使用Akismet ##
+
+Akismet允许人们向其报告提交到各自博客上的垃圾评论，并与他人报告的垃圾评论进行相似度对比，对新提交的评论进行过滤。
 
 ## 替代方法 ##
 
+**监督型学习方法supervised learning methods**，一种利用正确结果接受训练并逐步作出更准预测的方法。通过将特征作为输入，并令输出代表每一种可能的分类。
+
+1. 朴素贝叶斯
+2. 费舍尔方法
+3. 人工神经网络
+4. 支持向量机support vector machines
+
+---
+
+**贝叶斯分类器的优势**
+
+贝叶斯分类器之所以经常被用于文档分类的原因是，与其他方法相比它所要求的计算资源更少。一封电子邮件可能包含数百甚至数千个单词，与训练相应规模大小的神经网络相比简单地更新一下计数值所需占用的内存资源和处理器时钟周期会更少。而且正如你所看到的，这些工作完全可以在一个数据库中完成。
+
+**神经网络的劣势**
+
+神经网络是否会成为一种可行的替代方案取决于训练和査询所要求的速度，以及实际运行的环境。神经网络的复杂性导致了其在理解上的困难。在本章中，我们可以清楚地看到单词的概率，以及它们对最终分值的实际贡献有多大，而对于网络中两个神经元之间的连接强度而言，则并不存在同样简单的解释。
+
+---
+
+**神经网络的优势**
+
+另一方面，与本章中所介绍的分类器相比，神经网络和支持向量机有一个很大的优势：它们可以捕捉到输入特征之间更为复杂的关系。在贝叶斯分类器中，每个特征都有一个针对各分类的概率值，将这些概率组合起来之后就得到了一个整体上概率值。
+
+在神经网络中，某个特征的概率可能会依据其他特征的存在或缺失而改变。也许你正在试图阻止有关在线赌博的垃圾信息，但是又对跑马很感兴趣，在这种情况下，只有当电子邮件中的其他地方没有出现单词“ horse”时，单词“ casino”才被认为是“bad”的。朴素贝叶斯分类器无法捕获这样的相互依赖性，而神经网络却是可以的。
+
+
+## 小结 ##
+
+分类器用到的方法
+
+1. 朴素贝叶斯
+2. 费舍尔方法
 
