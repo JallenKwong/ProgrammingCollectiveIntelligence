@@ -628,4 +628,33 @@ True分支总是位于右侧。
 ## 小结 ##
 
 
+决策树的优点：
 
+1. 可以轻易地对一个受训模型给予解释
+2. 可以**同时接受**分类( categorical)数据和数值( numerical)数据作为输入
+3. 允许数据的缺失
+
+
+决策树的缺点：
+
+1. 对拥有大量可能结果的数据集时，算法就变得不那么有效
+2. 尽管它可以处理简单的数值型数据，但是它只能创建满足“大于/小于”条件的节点
+
+---
+
+
+本章相关决策树函数
+
+函数|描述
+---|---
+divideset(rows,column,value)|在某一列上对数据集合进行拆分，能够处理数值型数据或名词性数据
+uniquecounts(rows)|对各种可能的结果进行计数，giniimpurity(rows)、entropy(rows)将调用该函数
+giniimpurity(rows)|计算集合的混杂程度的方式一
+entropy(rows)|计算集合的混杂程度的方式二
+buildtree(rows,scoref=entropy)|创建决策树
+printtree(tree,indent='')|简单打印决策树
+drawtree(tree,jpeg='tree.jpg')|生成决策树的图片
+classify(observation,tree)|根据决策树对数据进行分类
+prune(tree,mingain)|修剪决策树的过细分支
+mdclassify(observation,tree)|根据决策树对部分特征缺失数据进行分类
+variance(rows)|计算集合的混杂程度的方式三，主要处理数值型结果
