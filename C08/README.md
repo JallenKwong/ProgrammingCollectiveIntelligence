@@ -1,5 +1,51 @@
 # 构建价格模型 #
 
+[1.构造一个样本数据集](#构造一个样本数据集)
+
+[2.k-最近邻分配算法](#k-最近邻分配算法)
+
+[2.1.近邻数](#近邻数)
+
+[2.2.定义相似度](#定义相似度)
+
+[2.3.kNN代码](#knn代码)
+
+[3.为近邻分配权重](#为近邻分配权重)
+
+[3.1.反函数](#反函数)
+
+[3.2.减法函数](#减法函数)
+
+[3.3.高斯函数](#高斯函数)
+
+[3.4.加权kNN](#加权knn)
+
+[4.交叉验证](#交叉验证)
+
+[5.不同类型的变量](#不同类型的变量)
+
+[5.1.加入数据集](#加入数据集)
+
+[5.2.按比例缩放](#按比例缩放)
+
+[6.对缩放结果进行优化](#对缩放结果进行优化)
+
+[7.不对称分布](#不对称分布)
+
+[7.1.估计概率密度](#估计概率密度)
+
+[7.2.绘制概率分布](#绘制概率分布)
+
+[7.2.1.累积概率](#累积概率)
+
+[7.2.2.尝试将处于不同价位点的实际概率值绘制](#尝试将处于不同价位点的实际概率值绘制)
+
+[8.使用真实数据——eBayAPI](#使用真实数据ebayapi)
+
+[9.何时使用k-最邻近算法](#何时使用k-最邻近算法)
+
+[10.小结](#小结)
+
 利用多种不同属性（比如价格）对数值型数据进行预测时，贝叶斯分类器，决策树，支持向量机都不是最佳算法。
 
 目的：
@@ -17,6 +63,8 @@
 
 
 ## 构造一个样本数据集 ##
+
+[numpredict.py](numpredict.py)
 
 情景：
 
@@ -323,16 +371,323 @@ testalgorithm会循环遍历测试集中的每一行，并利用a1gf得出最佳
 
 至于选择哪个，自己执生。
 
-
 ## 不同类型的变量 ##
+
+### 加入数据集 ###
+
+将新的变量加入到数据集
+
+	def wineset2():
+	  rows=[]
+	  for i in range(300):
+	    rating=random()*50+50
+	    age=random()*50
+	    aisle=float(randint(1,20))
+	    bottlesize=[375.0,750.0,1500.0][randint(0,2)]
+	    price=wineprice(rating,age)
+	    price*=(bottlesize/750)
+	    price*=(random()*0.2+0.9)
+	    rows.append({'input':(rating,age,aisle,bottlesize),
+	                 'result':price})
+	  return rows
+
+运行代码
+
+	>>> data=wineset2()
+	>>> crossvalidate(knn3, data)
+	500.7449458494611
+	>>> crossvalidate(weightedknn, data)
+	515.6156961829049
+	>>> 
+
+结果糟糕。其原因在于，算法现在还不知道如何对不同的变量加以区别对待。
+
+### 按比例缩放 ###
+
+此处，所需要的并不是一种根据变量的实际值来计算距离的方法，而是需要一种对数值进行归一化处理的方法，从而使所有变量都位于相同的值域范围之内。
+
+这样做也有助于找到减少多余变量的方法，或者至少能够降低其对计算结果的影响。
+
+为了达成上述两个目标，一种办法就是在进行任何计算之前先对数据重新按比例进行缩放。
+
+	def rescale(data,scale):
+	  scaleddata=[]
+	  for row in data:
+	    scaled=[scale[i]*row['input'][i] for i in range(len(scale))]
+	    scaleddata.append({'input':scaled,'result':row['result']})
+	  return scaleddata
+
+运行代码
+
+	>>> 
+	 RESTART: C:\Users\Administrator.USER-20180302VA\Desktop\Lab\ProgrammingCollectiveIntelligence\C08\numpredict.py 
+	>>> data=wineset2()
+	>>> sdata=rescale(data,[10,10,0,0.5])
+	>>> crossvalidate(knnestimate,sdata)
+	473.72014016615475
+	>>> crossvalidate(weightedknn,sdata)
+	838.3613563789352
+	>>> 
 
 ## 对缩放结果进行优化 ##
 
+在有许多输入变量需要考察的情况下，利用**优化算法**（爬山法，模拟退火算法，遗传算法）自动寻找最优解的办法。
+
+定义一个成本函数
+
+	def createcostfunction(algf,data):
+	  def costf(scale):
+	    sdata=rescale(data,scale)
+	    # 直接调用交叉验证时的函数
+	    return crossvalidate(algf,sdata,trials=20)
+	  return costf
+
+设置变量们权重值域
+
+	weightdomain=[(0,10)]*4
+
+使用模拟退火算法运行代码
+
+	>>> import optimization
+	>>> import numpredict
+	>>> data=numpredict.wineset2()
+	>>> costf=numpredict.createcostfunction(numpredict.knnestimate,data)
+	>>> optimization.annealingoptimize(numpredict.weightdomain,costf,step=2)
+	[9.0, 9.0, 8.0, 6.0] 329.572393039
+	[9.0, 9.0, 8.0, 4.0] 352.078113319
+	[7.0, 9.0, 8.0, 4.0] 432.154759685
+	...略...
+	[8, 10, 0, 8.0] 346.108416761
+	[8, 10, 0, 8.0] 349.249066339
+	[7, 10, 0, 8.0] 332.393589718
+	[7, 10, 0, 8.0]
+	>>> 
+
+**以这种方式对变量缩放进行优化的一个好处在于，很快就能发觉哪些变量是重要的，并且其重要程度有多大**。
+
+有的时候，有些数据很难收集到，或者收集的代价高昂，此时如果能够确定这些数据不是很有价值，那就可以将其忽略以避免额外的成本投入。
+
+此外，特别是在制定价格策略的时候，知道哪些变量是重要的，有可能会影响到我们所关注的方向而这些方向将会成为市场营销工作中相当重要的一部分内容；另外，这样做也有可能会为我们揭示出，如何将商品设计得与众不同，才能赢得最高的价格。
+
 ## 不对称分布 ##
+
+对于葡萄酒购买渠道分别有：
+
+1. 从小酒馆购得
+2. 从折扣店购得，这里有5折折扣
+
+这些信息在数据集中并没有被记录下来。
+
+	# 模拟两个渠道购得
+	def wineset3():
+	  rows=wineset1()
+	  for row in rows:
+	    if random()<0.5:
+	      # Wine was bought at a discount store
+	      row['result']*=0.6
+	  return rows
+
+假如使用kNN算法或加权kNN算法，对不同的葡萄酒进行价格预估，会发生什么情况。
+
+由于事实上数据集中并不包含任何有关购买者是从小酒馆还是从折扣店购买葡萄酒的信息，因此算法无法将这一情况考虑在内，其所得到的最近邻结果也将不会考虑购买源这一因素。
+
+**最终的结果**是：算法给出的平均值将同时涉及两组人群，这就相当于可能有25%的折扣。
+
+验证一下这种情况：
+
+	>>> data=numpredict.wineset3()
+	>>> numpredict.wineprice(99.0, 20.0)
+	106.07142857142857
+	>>> numpredict.weightedknn(data,[99.0, 20.0])
+	86.35355150106489
+	>>> 
+
+如果只想得到一个简单的数字，那么这不失为一种预测的办法，**但是它并不能准确地反应出某人实际最终的购买情况**。
+
+为了不只是简单地得到一个平均值，需要一种方法能够在某些方面更近一步地对数据进行考查。
+
+### 估计概率密度 ###
+
+除了取近邻的加权平均并得到一个价格预估外，也许需要知道**某瓶葡萄酒落入指定价格区间的概率**。
+
+上面的例子，假设输入条件为99.0级和20年，那么需要一个函数来告诉我们，价格在[40,80]区间的概率为50%，在[80,100]的为50%。
+
+	def probguess(data,vec1,low,high,k=5,weightf=gaussian):
+	  dlist=getdistances(data,vec1)
+	  nweight=0.0
+	  tweight=0.0
+	  
+	  for i in range(k):
+	    dist=dlist[i][0]
+	    idx=dlist[i][1]
+	    weight=weightf(dist)
+	    v=data[idx]['result']
+	    
+	    # Is this point in the range?
+	    if v>=low and v<=high:
+	      nweight+=weight
+	    tweight+=weight
+	  if tweight==0: return 0
+	  
+	  # The probability is the weights in the range
+	  # divided by all the weights
+	  return nweight/tweight
+
+运行代码
+
+	>>> data=wineset3()
+	>>> probguess(data, [99.0,20], 40, 80)
+	0.7980215674812295
+	>>> probguess(data, [99.0,20], 80, 120)
+	0.2019784325187704
+	>>> probguess(data, [99.0,20], 120, 1000)
+	0.0
+	>>> probguess(data, [99.0,20], 30, 120)
+	1.0
+	>>> 
+
+通过绘图，获得概率分布整体视图的方法。
+
+### 绘制概率分布 ###
+
+使用matplotlib库绘制图
+
+绘图初体验
+
+	>>> from pylab import *
+	>>> a=array([1,2,3,4])
+	>>> b=array([4,2,3,1])
+	>>> plot(a,b)
+	[<matplotlib.lines.Line2D object at 0x00000000073DEAC8>]
+	>>> show()
+
+![](image/05.png)
+
+---
+
+	>>> t1=arange(0.0,10.0,0.1)
+	>>> plot(t1,sin(t1))
+	[<matplotlib.lines.Line2D object at 0x0000000007721390>]
+	>>> show()
+
+![](image/06.png)
+
+---
+
+查看概率分布的方法：
+
+1. 累积概率cumulative probability
+2. 尝试将处于不同价位点的实际概率值绘制
+
+#### 累积概率 ####
+
+累积概率图显示的是结果小于给定值的概率分布情况。
+
+以价格为例，图形从概率为0开始(对应于价格小于0的概率)，尔后随着商品在某一价位处命中的概率值而逐级递增。
+
+直到最高价位处，图形对应的概率值达到1(因为实际价格小于或等于最高价格的可能性必为100%)。
+
+
+	from pylab import *
+	
+	def cumulativegraph(data,vec1,high,k=5,weightf=gaussian):
+	  t1=arange(0.0,high,0.1)
+	  cprob=array([probguess(data,vec1,0,v,k,weightf) for v in t1])
+	  plot(t1,cprob)
+	  show()
+
+运行代码
+
+	>>> cumulativegraph(data, (1, 1), 120)
+
+![](image/07.png)
+
+通过观察图形，可以很清楚地看到，此处的概率值集中在60美元和110美元之间，因为那段区间是累积概率发生跳跃的地方。预先得知这一情况将使我们能够在**不依靠猜测的情况下**进行概率的计算。
+
+#### 尝试将处于不同价位点的实际概率值绘制 ####
+
+由于任何一瓶葡萄酒准确位于某一价位的概率都是非常低的，因此这种方法相比而言所要求的技巧性会更高一些。
+
+这样绘制出来的图形，在我们预测的价格附近会形成一个个小小的突起，而其余地方则几平都会是0。
+
+这样的结果并不是我们想要的，我们需要的是有一种方法能够在某些“窗口”(windows)范围内将概率值组合起来。
+
+为了达成这目的，有一种方法是，**假设每个价位点的概率都等于其周边概率的一个加权平均**
+
+	def probabilitygraph(data,vec1,high,k=5,weightf=gaussian,ss=5.0):
+	  # Make a range for the prices
+	  t1=arange(0.0,high,0.1)
+	  
+	  # Get the probabilities for the entire range
+	  probs=[probguess(data,vec1,v,v+0.1,k,weightf) for v in t1]
+	  
+	  # Smooth them by adding the gaussian of the nearby probabilites
+	  smoothed=[]
+	  for i in range(len(probs)):
+	    sv=0.0
+	    for j in range(0,len(probs)):
+	      dist=abs(i-j)*0.1
+	      weight=gaussian(dist,sigma=ss)
+	      sv+=weight*probs[j]
+	    smoothed.append(sv)
+	  smoothed=array(smoothed)
+	    
+	  plot(t1,smoothed)
+	  show()
+
+运行代码
+
+	>>> data=wineset3()
+	>>> probabilitygraph(data, (1, 1), 120)
+	>>> 
+
+![](image/08.png)
+
+通过上图可以更加清楚地看到结果数据集中分布的区域。
+
+这样的概率分布清楚地反映出：在预測葡萄酒价格时缺少了一部分关键数据，那就是有些人的葡萄酒生意何以比其他人做得更好的原因。
+
+有的时候能够明确地指出这些数据是什么，但有的时候，只会发现自己须要在更低的价格范围内销售葡萄酒才行。
+
 
 ## 使用真实数据——eBayAPI ##
 
+[ebaypredict.py](ebaypredict.py)
+
 ## 何时使用k-最邻近算法 ##
 
+kNN也存在一些**不足之处**。
+
+1. 因为算法须要计算针对每个点的距离，因此预测过程的计算量很大。
+2. 而且，在一个包含有许多变量的数据集中，可能很难确定合理的权重值，也很难决定是否应该去除某些变量。
+
+优化可能有助于解决这一问题，但是对于大数据集而言，寻找一个优解可能会花费非常长的时间。
+
+---
+
+尽管如此，kNN较之其他方法还是有一定**优势**的。
+
+关于预测计算量非常大这一特点，也有其好的一面，那就是可以在无须任何计算开销的前提下将新的观测数据加入到数据集中。
+
+要正确地解释这一点也很容易，因为算法是在使用其他观测数据的加权值来进行预测的。
+
+---
+
+尽管确定权重可能是需要技巧的，但是一旦确定了最佳的权重值，就可以凭借这些信息更好地掌握数据集所具备的特征。
+
+最后，当怀疑数据集中还有其他无法度量的变量时，我们还可以建立概率函数。
+
+
 ## 小结 ##
+
+kNN的缺点
+
+1. 计算量大
+2. 无关变量干扰结果（通过权重进行优化）
+
+---
+
+kNN的优点
+
+1. 新数据加入无需从头再来。
 
