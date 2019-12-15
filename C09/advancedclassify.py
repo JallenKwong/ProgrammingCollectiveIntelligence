@@ -91,11 +91,17 @@ def getlocation(address):
   return loc_cache[address]
 
 def milesdistance(a1,a2):
+  return 0
+
+
+'''
+def milesdistance(a1,a2):
   lat1,long1=getlocation(a1)
   lat2,long2=getlocation(a2)
   latdif=69.1*(lat2-lat1)
   longdif=53.0*(long2-long1)
   return (latdif**2+longdif**2)**.5
+'''
 
 def loadnumerical():
   oldrows=loadmatch('matchmaker.csv')
@@ -122,8 +128,13 @@ def scaledata(rows):
   
   # Create a function that scales data
   def scaleinput(d):
-     return [(d[i]-low[i])/(high[i]-low[i])
-            for i in range(len(low))]
+    result=[]
+    for i in range(len(low)):
+      if high[i]-low[i]==0:
+        result.append(0)
+      else:
+        result.append((d[i]-low[i])/(high[i]-low[i]))
+    return result
   
   # Scale all the data
   newrows=[matchrow(scaleinput(row.data)+[row.match])
