@@ -265,10 +265,272 @@ NumPy提供一个高效的数组对象。
 
 ### 非负矩阵因式分解算法实现 ###
 
+[nnmf.py](nnmf.py)
+
+通过计算最佳的特征矩阵和权重矩阵，算法尝试尽最可能大地来重新构造文章矩阵。
+
+定义一函数衡量最终结果与理想结果的接近程度加。
+
+	from numpy import *
+	
+	def difcost(a,b):
+	  dif=0
+	  for i in range(shape(a)[0]):
+	    for j in range(shape(a)[1]):
+	      # Euclidean Distance
+	      dif+=pow(a[i,j]-b[i,j],2)
+	  return dif
+
+使用**乘法更新算法multiplicative update rules**逐步地更新矩阵，以使成本函数的计算值逐步降低。
+
+这法则产生了4个新的**更新矩阵update matrices**，最初的文章矩阵称为数据矩阵。
+
+- hn 经**转置**后的**权重矩阵**与**数据矩阵**相**乘**得到的矩阵。
+- hd 经**转置**后的**权重矩阵**与**原权重矩阵**相乘，再与**特征矩阵**相**乘**得到的矩阵。
+- wn **数据矩阵**与经**转置**后的**特征矩阵**相**乘**得到的矩阵。
+- wd **权重矩阵**与**特征矩阵**相乘，再与经**转置**后的**特征矩阵**相乘得到的矩阵。
+
+为了更新特征矩阵和权重矩阵，首先将上述所有**矩阵都转换成数组**。然后将特征矩阵中的每一个值与m中的对应值相乘，并除以中的对应值。类似地，我们再将权重矩阵中的每一个值与wm中的对应值相乘，并除以wd中的对应值。
+
+	def factorize(v,pc=10,iter=50):
+	  ic=shape(v)[0]
+	  fc=shape(v)[1]
+	
+	  # Initialize the weight and feature matrices with random values
+	  w=matrix([[random.random() for j in range(pc)] for i in range(ic)])
+	  h=matrix([[random.random() for i in range(fc)] for i in range(pc)])
+	
+	  # Perform operation a maximum of iter times
+	  for i in range(iter):
+	    wh=w*h
+	    
+	    # Calculate the current difference
+	    cost=difcost(v,wh)
+	    
+	    if i%10==0: print cost
+	    
+	    # Terminate if the matrix has been fully factorized
+	    if cost==0: break
+	    
+	    # Update feature matrix
+	    hn=(transpose(w)*v)
+	    hd=(transpose(w)*w*h)
+	  
+	    h=matrix(array(h)*array(hn)/array(hd))
+	
+	    # Update weights matrix
+	    wn=(v*transpose(h))
+	    wd=(w*h*transpose(h))
+	
+	    w=matrix(array(w)*array(wn)/array(wd))  
+	    
+	  return w,h
+
+上述函数要求我们指定希望找到的特征数。
+有时，我们的确清楚须要寻找的特征数量(比如，在一段录音中的两种声音，或是当天的五大新闻主题)；
+但有时，我们却无法得知到底要指定多少特征。
+没有一种通用的方法可以自动确定正确的特征数目，但是借助实验手段可以找到一个合理的范围。
+
+---
+
+运行代码
+
+	>>> m1=matrix([[1,2,3],[4,5,6]])
+	>>> m2=matrix([[1,2],[3,4],[5,6]])
+	>>> m1,m2
+	(matrix([[1, 2, 3],
+	        [4, 5, 6]]), matrix([[1, 2],
+	        [3, 4],
+	        [5, 6]]))
+	>>> w,h=factorize(m1*m2, pc=3, iter=100)
+	7526.5611047864
+	11.803496635111697
+	3.0705797275039375
+	0.9981348560094103
+	0.3411116092260533
+	0.11708284052890991
+	0.03994764099256172
+	0.013542324988869998
+	0.004569091620798321
+	0.0015368023388649718
+	>>> w*h
+	matrix([[21.98368154, 28.0128059 ],
+	        [49.00734664, 63.99437386]])
+	>>> m1*m2
+	matrix([[22, 28],
+	        [49, 64]])
+	>>> 
+
+用于前面的例子。
+
+![](image/10.png)
+
+最后的矩阵并不理想，后章节分析
 
 ## 结果呈现 ##
 
+**特征矩阵**中的每个特征都有一个权重，它是用来指示每个单词应用到该特征的程度的，因此可以尝试列出每一个特征中的前5或前10个单词来，看看在该特征中哪几个单词的重要程度是最高的。
+
+在**权重矩阵**里对应列上的数字告诉我们的，是该特征应用于每一篇文章的权重值。
+
+**因此假如列出前三篇文章的权重，借此来考査该项特征应用于所有文章的情况，同样也是很有意义的**。
+
+	# w为权重矩阵，h为特征矩阵
+	def showfeatures(w,h,titles,wordvec,out='features.txt'): 
+	  outfile=file(out,'w')  
+	  pc,wc=shape(h)
+	  toppatterns=[[] for i in range(len(titles))]
+	  patternnames=[]
+	  
+	  # Loop over all the features
+	  # pc为特征矩阵行数
+	  for i in range(pc):
+	    slist=[]
+	    # Create a list of words and their weights
+	    # wc为特征矩阵列数，列出单词
+	    for j in range(wc):
+	      slist.append((h[i,j],wordvec[j]))
+	    # Reverse sort the word list
+	    slist.sort()
+	    slist.reverse()
+	    
+	    # Print the first six elements
+	    # 根据特征矩阵中的数，列出前6名单词
+	    n=[s[1] for s in slist[0:6]]
+	    outfile.write(str(n)+'\n')
+	    patternnames.append(n)
+
+		# ---
+
+	    # Create a list of articles for this feature
+	    flist=[]
+	    for j in range(len(titles)):
+	      # Add the article with its weight
+	      # w为权重矩阵
+	      flist.append((w[j,i],titles[j]))
+	      toppatterns[j].append((w[j,i],i,titles[j]))
+	    
+	    # Reverse sort the list
+	    flist.sort()
+	    flist.reverse()
+	    
+	    # Show the top 3 articles
+	    for f in flist[0:3]:
+	      outfile.write(str(f)+'\n')
+	    outfile.write('\n')
+	
+	  outfile.close()
+	  # Return the pattern names for later use
+	  return toppatterns,patternnames
+
+运行代码
+
+![](image/11.png)
+
+[输出结果文件features.txt](features.txt)
+
+---
+
+例一分析
+
+![](image/12.png)
+
+上述特征清晰地列出了一组与巴勒斯坦选举有关的单词，而且还列出了一组与特征所要表达的主题关系密切的文章。
+
+由于生成这些结果的依据来自于文章的标题和一部分正文，因此可以看到，第1篇文章和第3篇文章都与上述特征紧密相关，即便这两者的标题中并没有任何单词是一样的。另外，因为单词的重要性是根据其在大量文章中被引用的次数而得到的，所以单词“ palestinian”和“ elections”位于最前列。
+
+---
+
+有些特征并没有遗嘱明确无疑的文章与之关联，但是它们仍然为我们提供了颇有价值的结果。
+
+例二分析
+
+![](image/13.png)
+
+显然，此处的特征与第一篇介绍乳癌的文章有着极为紧密的关系。
+
+然而，后面几篇关系不是那么紧密的文章是与健康相关的，这些文章中有一部分单词与第一篇文章是相同的。
+
+### 以文章的形式呈现 ###
+
+另一种呈现方式，列出**每篇文章及应用于该片文章及应用于该文章的前三项特征**。
+
+借此可以判断出，一篇文章是由相同数量的几个主题共同构成的，还是由某个权重很高的主题单独构成的。
+
+	def showarticles(titles,toppatterns,patternnames,out='articles.txt'):
+	  outfile=file(out,'w')  
+	  
+	  # Loop over all the articles
+	  for j in range(len(titles)):
+	    outfile.write(titles[j].encode('utf8')+'\n')
+	    
+	    # Get the top features for this article and
+	    # reverse sort them
+	    toppatterns[j].sort()
+	    toppatterns[j].reverse()
+	    
+	    # Print the top three patterns
+	    for i in range(3):
+	      outfile.write(str(toppatterns[j][i][0])+' '+
+	                    str(patternnames[toppatterns[j][i][1]])+'\n')
+	    outfile.write('\n')
+	    
+	  outfile.close()
+
+运行代码
+
+![](image/14.png)
+
+[输出结果文件articles.txt](articles.txt)
+
+---
+
+例一分析
+
+![](image/15.png)
+
+很显然，这两个特征都是与Iraq相关的，但这篇文章又不是非常的典型，因为文中并没有涉及“oil”或“ gates”。
+
+通过构造出可以**组合使用**的，同时又不是专门针对于某篇文章裁剪得来的模式，我们的算法能够以较少的模式来覆盖更多的文章。
+
+---
+
+例二分析
+
+![](image/17.png)
+
+文章有一个权重值很高的特征，但是这特征却无法应用于其他任何文章。
+
+因为我们所使用的模式非常少，所以也有可能会出现少量与其他任何文章没有什么相似的文章，并且得不出有关于它们自身的模式来。
+
+---
+
+例三分析
+
+![](image/18.png)
+
+在例子中位于最前面的几个特征与文章并没有什么相关性，看上去几乎都是随机产生的。因权重值非常小，所以该文章不被真正运用到这些特征。
 
 ## 利用股票市场的数据 ##
+
+
+### 什么是成交量 ###
+
+
+
+### 从雅虎API下载数据 ###
+
+
+
+### 准备矩阵 ###
+
+
+
+### 运行NNMF ###
+
+
+### 结果呈现 ###
+
+
 
 
