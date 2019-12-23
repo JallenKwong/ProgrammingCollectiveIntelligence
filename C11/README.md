@@ -1,5 +1,51 @@
 # 智能进化 #
 
+[1.什么是遗传编程](#什么是遗传编程)
+
+[1.1.遗传编程与遗传算法](#遗传编程与遗传算法)
+
+[1.2.遗传编程的成功之处](#遗传编程的成功之处)
+
+[2.将程序以树形方式表示](#将程序以树形方式表示)
+
+[2.1.在Python中表现树](#在python中表现树)
+
+[2.2.树的构造和评估](#树的构造和评估)
+
+[2.3.程序的展现](#程序的展现)
+
+[3.构造初始种群](#构造初始种群)
+
+[4.测试题解](#测试题解)
+
+[4.1.一个简单的数学测试](#一个简单的数学测试)
+
+[4.2.衡量程序的好坏](#衡量程序的好坏)
+
+[5.对程序进行变异](#对程序进行变异)
+
+[6.交叉](#交叉)
+
+[7.构筑环境](#构筑环境)
+
+[7.1.多样性的重要价值](#多样性的重要价值)
+
+[8.一个简单的游戏](#一个简单的游戏)
+
+[8.1.循环赛——进化](#循环赛进化)
+
+[8.2.真人对抗](#真人对抗)
+
+[9.更多可能性](#更多可能性)
+
+[9.1.更多数值型函数](#更多数值型函数)
+
+[9.2.记忆力](#记忆力)
+
+[9.3.不同数据类型](#不同数据类型)
+
+[10.小结](#小结)
+
 在先前的章节中，在面对每一个问题时，都采用了一种最适合与解决该问题的算法。
 
 在某些例子，还需对参数进行调整，或者借助于优化手段来找出一个满意的参数集来。
@@ -571,6 +617,7 @@ scorefunction得到的结果对程序进行排序
 
 运行代码
 
+	>>>rf=getrankfunction(buildhiddenset())
 	>>> evolve(2,500,rf,mutationrate=0.2,breedingrate=0.1,pexp=0.7,pnew=0.1)
 	13128
 	7026
@@ -773,6 +820,73 @@ scorefunction得到的结果对程序进行排序
 	   p1
 	<__main__.node instance at 0x00000000046A2DC8>
 
+解析运行结果
+
+	+
+		+
+			p1*1
+			p0*p0
+		+
+			*
+				-
+					+
+						3*p0
+						p1+7
+					if p1>0:
+						return 2
+					else:
+						return p1+2
+				1
+			if p1>p1:
+				return 1
+			else:
+				return 0
+	
+	
+	# ---
+
+	(p1+p0*p0)+((3*p0+p1+7)-(p1>0?2:p1+2))*1+0
+	
+	(p1+p0^2)+(3*p0+p1+7)-(p1>0?2:p1+2)
+	
+	2*p1+p0^2+3*p0+7-(p1>0?2:p1+2)
+	
+	# ---
+	
+	hiddenset=buildhiddenset()
+	
+	def newfunc(p0,p1):return 2*p1+p0**2+3*p0+7-(2 if p1>0 else p1+2)
+	
+	def scorefunction2(func,s):
+	  dif=0
+	  for data in s:
+	    v=func(data[0],data[1])
+	    dif+=abs(v-data[2])
+	  return dif
+	
+	>>> scorefunction2(newfunc,hiddenset)
+	0
+
+---
+
+算法得出结果稍微加工下得到
+
+	def newfunc(p0,p1):
+		return 2*p1+p0**2+3*p0+7-(2 if p1>0 else p1+2)
+
+真实原函数
+
+	def hiddenfunction(x,y):
+	    return x**2+2*y+3*x+5
+
+其实算出的题解的`7-(2 if p1>0 else p1+2)`，根据`buildhiddenset()`函数p1的定义域为[0,40)，对应这式子的值域就是{5}，可以说跟真实原函数本质上相同。
+
+虽然能得出结果，却所得结果复杂。
+
+上述例子告诉我们遗传编程的一个**重要特征**：**算法找到的题解也许是完全正确的，亦或是非常不错的，但是由于其构造方式的独特性，通常这些题解远比编程人员手工设计出来的答案复杂得多**。在这样的程序中，时常会发现有大段的内容不做任何工作，或者对应的是形式复杂、但始终都只返回同一结果的公式。
+
+要让程序保持简单是可以的，但是多数情况下这样做会增加我们寻找优解的难度。**解决**这问题的一种更好的方法是：**允许程序不断进化以形成优解，然后再删除并简化树中不必要的部分**。我们可以手工完成这项工作，也可以借助剪枝算法自动进行。
+
 
 ### 多样性的重要价值 ###
 
@@ -784,6 +898,327 @@ evolve函数中有一部分代码会对程序按表现从优到劣的顺序进�
 
 ## 一个简单的游戏 ##
 
+让游戏引入人工智能。
+
+通过彼此竞争以及真人对抗，为表现优异的程序提供更多的进入下一代机会，让程序不断进化。
+
+该游戏叫Grid War。
+
+![](image/07.png)
+
+游戏规则：
+
+- 该游戏有两位玩家参与，每个人轮流在一系列小网格中移动。
+- 每位玩家可以选择4个方向中的任何一个进行移动，并且游戏区域是受限的，如果其中一位玩家企图移到边界以外，他就丢掉了这一局。
+- 游戏的目标是要在自己这一局中捉住对方，相应的方法是，只要将自己移至对方所在的区域即可。
+- 唯一的附加条件是，如果你试图在一行的同一个方向上移动两次，那就自动认输了。
+
+这个游戏虽然非常简单，但是由于它要求玩家彼此相互博弈，**因此会从中了解到更多有关进化在竟争性方面的细节**。
+
+--
+
+首先，创建一个函数，该函数涉及两位玩家，并在双方之间模拟一场游戏。函数将玩家及其对手的所在位置，连同他走的上一步，依次传给毎一个程序，并根据返回的结果决定下一步该如何移动。
+
+用数字0到3来代表移动的方向，即4个可能方向中的一个，不过由于所要处理的随机程序是可以返回任意整数的，所以函数必须对超出值域范围的情况进行处理。
+
+为此，以4为模对结果进行求模运算。此外，我们的随机程序所提供的方案，还有可能会让玩家在一个圆周范围内不停地移动，或者是诸如此类的方案，因此我们将移动的步数限制在50步，超过50就认为是打成了平局。
+
+	def gridgame(p):
+	  # Board size
+	  max=(3,3)
+	  
+	  # Remember the last move for each player
+	  lastmove=[-1,-1]
+	  
+	  # Remember the player's locations
+	  location=[[randint(0,max[0]),randint(0,max[1])]]
+	  
+	  # Put the second player a sufficient distance from the first
+	  location.append([(location[0][0]+2)%4,(location[0][1]+2)%4])
+	  # Maximum of 50 moves before a tie
+	  for o in range(50):
+	  
+	    # For each player
+	    for i in range(2):
+	      locs=location[i][:]+location[1-i][:]
+	      locs.append(lastmove[i])
+		  # move为随机值0，1，2，3
+	      move=p[i].evaluate(locs)%4
+	      
+	      # You lose if you move the same direction twice in a row
+	      if lastmove[i]==move: return 1-i
+	      lastmove[i]=move
+	      if move==0: 
+	        location[i][0]-=1
+	        # Board wraps
+	        if location[i][0]<0: location[i][0]=0
+	      if move==1: 
+	        location[i][0]+=1
+	        if location[i][0]>max[0]: location[i][0]=max[0]
+	      if move==2: 
+	        location[i][1]-=1
+	        if location[i][1]<0: location[i][1]=0
+	      if move==3: 
+	        location[i][1]+=1
+	        if location[i][1]>max[1]: location[i][1]=max[1]
+	      
+	      # If you have captured the other player, you win
+	      if location[i]==location[1-i]: return i
+	  return -1
+
+运行代码
+
+	>>> p1=makerandomtree(5)
+	>>> p2=makerandomtree(5)
+	>>> gridgame([p1,p2])
+	1
+	>>> 
+
+- 0表示玩家1赢
+- 1表示玩家2赢
+- -1表示平局
+
+### 循环赛——进化 ###
+
+	# 循环赛计分函数
+	def tournament(pl):
+	  # Count losses
+	  losses=[0 for p in pl]
+	  
+	  # Every player plays every other player
+	  for i in range(len(pl)):
+	    for j in range(len(pl)):
+	      if i==j: continue
+	      
+	      # Who is the winner?
+		  # 上一节有介绍
+	      winner=gridgame([pl[i],pl[j]])
+	      
+	      # Two points for a loss, one point for a tie
+	      if winner==0:
+	        losses[j]+=2
+	      elif winner==1:
+	        losses[i]+=2
+	      elif winner==-1:
+	        losses[i]+=1
+	        losses[i]+=1
+	        pass
+	
+	  # Sort and return the results
+	  z=zip(losses,pl)
+	  z.sort()
+	  return z
+
+运行代码
+
+	>>> winner=evolve(5,100,tournament,maxgen=50)
+	20
+	60
+	96
+	70
+	98
+	96
+	88
+	100
+	92
+	98
+	92
+	96
+	70
+	76
+	66
+	54
+	70
+	94
+	86
+	76
+	72
+	64
+	50
+	52
+	56
+	50
+	54
+	54
+	62
+	60
+	64
+	74
+	58
+	64
+	52
+	56
+	50
+	42
+	72
+	74
+	62
+	50
+	72
+	70
+	68
+	76
+	78
+	66
+	82
+	64
+	add
+	 p4
+	 subtract
+	  isgreater
+	   p4
+	   subtract
+	    multiply
+	     multiply
+	      p4
+	      3
+	     p0
+	    p4
+	  2
+
+### 真人对抗 ###
+
+通过进化的得到了一个程序，若该程序在于其他机器人竞争者进行对抗时表现得十分优异，那就可以进行真人对抗。
+
+	class humanplayer:
+	  def evaluate(self,board):
+	
+	    # Get my location and the location of other players
+	    me=tuple(board[0:2])
+	    others=[tuple(board[x:x+2]) for x in range(2,len(board)-1,2)]
+	    
+	    # Display the board
+	    for i in range(4):
+	      for j in range(4):
+	        if (i,j)==me:
+	          print 'O',
+	        elif (i,j) in others:
+	          print 'X',
+	        else:
+	          print '.',
+	      print
+	      
+	    # Show moves, for reference
+	    print 'Your last move was %d' % board[len(board)-1]
+	    print ' 0'
+	    print '2 3'
+	    print ' 1'
+	    print 'Enter move: ',
+	    
+	    # Return whatever the user enters
+	    move=int(raw_input())
+	    return move
+
+运行代码
+
+	>>> gridgame([winner,humanplayer()])
+	. . O .
+	. . . .
+	X . . .
+	. . . .
+	Your last move was -1
+	 0
+	2 3
+	 1
+	Enter move:  3
+	. . . O
+	X . . .
+	. . . .
+	. . . .
+	Your last move was 3
+	 0
+	2 3
+	 1
+	Enter move:  1
+	. . . .
+	X . . O
+	. . . .
+	. . . .
+	Your last move was 1
+	 0
+	2 3
+	 1
+	Enter move:  1
+	0
+	>>> 
+
+>PS. X可以原地不同的吗？
+
 ## 更多可能性 ##
 
+下面的几个小节列出几种方法，借助这些方法可以将简单的遗传编程模型**扩展**到各个不同的应用领域。
+
+### 更多数值型函数 ###
+
+面对更复杂的问题，增加可供选用的函数，以帮助我们成功构造出程序树。
+
+- 三角函数，比如正弦、余弦和正切函数
+- 其他数学函数，比如乘方、平方根和绝对值
+- 统计分布，比如高斯分布。
+- 距离度量，比如欧儿里德距离和 tanimoto距离。
+- 一个包含3个参数的函数，如果第一个参数介于第二个和第三个之间，则返回1。
+- 一个包含3个参数的函数，如果前两个参数的差小于第三个，则返回1。
+
+正如所期望的，这些函数算是较为复杂的，利用这些函数解决具体问题时，往往须要对其进行裁减。
+
+在解决信号处理领城中的问题时，三角函数也许是必要的，不过在本章我们门所构建的游戏中，三角函数的用处就不大了。
+
+### 记忆力 ###
+
+本章中构造的程序几乎完全是“反应式”的( reactive)，它们只会根据输入来给出结果。尽管这种做法对于解决数学函数的问题是有效的，但是它却使我们的程序在执行时缺少了**长期策略**( longer-term strategy)。在前面的“追逐”游戏( chasing game)中，我们会将上步操作传递给程序，因而大多数情况下，程序会明白，它们不可以在一行里朝相同方向移动两次——但**这仅仅是程序的一种输出而已，并非它们自己做出的决策**。
+
+如果一个程序要发展出更为**长期的策略**，那么就须要有一种方法，能够将下一回合中需要用到的信息保存起来。
+
+实现这一功能的一种简单办法是：**建立一种新类型的节点，用以将信息存入预先定义好的内存槽(slot)内，或从槽中取出**。一个用于存入信息的节点(storenode)，包含一个子节点和一个指向记忆槽的索引，它会从子节点中取出结果，并存入内存槽中，然后再将结果一同传递给其父节点。一个用于取回信息的节点( recall node)，不包含任何子节点，并且它只返回位于相应槽中的结果值。如果一个存入节点位于树的根部，则树上的任何一个部位，只要具有相应的取回节点，就可以获取到最终的结果值。
+
+除了独享内存(individual memory)外，我们还可以设置**共享内存**，以供所有程序读写之用。共享内存除了有一组可供所有程序读写的内存槽外，与独享内存并没有多大的区别。共享内存为更高级别的协作与竞争创造了条件。
+
+### 不同数据类型 ###
+
+本章所讨论的框架是完全针对于接受整型参数并返回整型结果的程序的。因为**浮点数**的操作和整型是类似的，所以我们只要稍作修改就可以将其用于浮点数。为此，我们只须修改ma kerandomt ree，以随机的浮点值而非整型值来生成常量节点。
+
+假如要让程序能够处理其他类型的数据，则还须**做更大范围**的修改，大部分修改都是针对节点上的函数进行的。对基础框架进行修改之后，可以令其支持如下类型的数据：
+
+- 字符串 字符串的相关操作包括连接( concatenate)、分割(spit)、索引( indexing)和求子串(substrings)。
+- 列表 列表操作与字符串操作差不多。
+- 字典 字典的相关操作包括替换和添加。
+- 对象 任何一个自定义对象都可以用于一棵树的输入，树上节点处的函数就对应于该对象的方法调用。
+
+从上述这些例子中可以得出一个很重要的结论：我们时常会要求树上的节点处理不止一种类型的返回值。比如，一个求子串的操作就需要一个字符串和两个整数作为输入，这意味着：子节点中必须有一个返回字符串，而另两个则分别返回整数。
+
+针对上述情况，一种最为简单的做法是：随机地生成树上的节点，对节点施以变异和配对，并剔除那些数据类型不匹配的节点。但是这在计算上可能是一种浪费，何况我们已经掌握了为树的构造增加限制条件的方法一在前面处理整型值的树中，每个节点处的函数都知道自己需要多少子节点：同样，我们可以如法炮制，对子节点的类型及其返回类型加以限制。例如，我们可以按照如下方式重新定义 wrapper类，此处的 params是一个字符申列表，它为每个参数指定了所使用的数据类型：
+
+	class fwrapper:
+	  def __init__(self,function,params,name):
+		self.function=function
+		self.childcount=param
+		self.name=name
+		
+同时，或许还希望将flist设置为一个带返回值类型的字典。例如：
+
+	#flist={'str':[substringw,concatw],'int':[indexw]}
+	flist=[addw,mulw,ifw,gtw,subw]
+
+然后修改makerandomtree开始部分进行修改：
+
+	def makerandomtree(pc,datatype,maxdepth=4,fpr=0.5,ppr=0.6):
+	  if random()<fpr and maxdepth>0:
+		f=choice(flist[datatype])
+		children=[makerandomtree(pc,type,maxdepth-1,fpr,ppr) 
+				  for type in f.params]
+		return node(f,children)
+		...
+
+同样， crossover函数也可能须要进行相应的修改，以确保实施交换的节点具有相同的返回类型。
+
+有关如何将遗传編程从一个简单模型扩展到更为复杂的情形，本节从概念上为我们提供了些思路，同时我们也鼓励大家进一步对其加以完善，并尝试将自动生成的程序用于更为复杂的问题。
+
+尽管程序的生成过程可能会耗费相当长的时间，但是一旦找到了一个表现优异的程序，我们就可以对其反复地加以利用。
+
+
 ## 小结 ##
+
+本质上看，遗传编程将构造出**一个能构造算法的算法**。
+
+![遗传编程的一个大体过程](image/01.png)
+
